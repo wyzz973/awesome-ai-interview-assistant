@@ -1,7 +1,7 @@
 function App(): JSX.Element {
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-      <h1>AI 面试助手</h1>
+    <div className="flex items-center justify-center h-screen">
+      <h1 className="text-3xl font-bold">AI 面试助手</h1>
     </div>
   )
 }
