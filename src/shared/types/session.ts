@@ -1,0 +1,46 @@
+/** 面试会话 */
+export interface Session {
+  id: string
+  company: string
+  position: string
+  startTime: number
+  endTime: number
+  duration: number
+  status: 'recording' | 'completed' | 'reviewed'
+}
+
+/** 转写记录条目 */
+export interface TranscriptEntry {
+  id: string
+  sessionId: string
+  timestamp: number
+  speaker: 'interviewer' | 'me'
+  text: string
+  isFinal: boolean
+}
+
+/** 截屏问答记录 */
+export interface ScreenshotQA {
+  id: string
+  sessionId: string
+  timestamp: number
+  imagePath: string
+  question: string
+  answer: string
+  model: string
+}
+
+/** 复盘报告 */
+export interface ReviewReport {
+  id: string
+  sessionId: string
+  generatedAt: number
+  summary: string
+  questions: string[]
+  performance: {
+    strengths: string[]
+    weaknesses: string[]
+  }
+  suggestions: string[]
+  keyTopics: string[]
+}

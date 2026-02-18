@@ -1,0 +1,60 @@
+/** IPC 通道常量 */
+export const IPC_CHANNELS = {
+  // 窗口控制
+  WINDOW_TOGGLE: 'window:toggle',
+  WINDOW_SET_OPACITY: 'window:setOpacity',
+  WINDOW_GET_OPACITY: 'window:getOpacity',
+
+  // 截屏
+  SCREENSHOT_CAPTURE: 'screenshot:capture',
+
+  // AI / LLM
+  LLM_CHAT: 'llm:chat',
+  LLM_ANALYZE_SCREENSHOT: 'llm:analyzeScreenshot',
+  LLM_STREAM_CHUNK: 'llm:streamChunk',
+  LLM_STREAM_END: 'llm:streamEnd',
+  LLM_STREAM_ERROR: 'llm:streamError',
+  LLM_TEST_CONNECTION: 'llm:testConnection',
+
+  // 语音识别
+  ASR_START: 'asr:start',
+  ASR_STOP: 'asr:stop',
+  ASR_TRANSCRIPT: 'asr:transcript',
+  ASR_STATUS: 'asr:status',
+  ASR_TEST_CONNECTION: 'asr:testConnection',
+
+  // 会话管理
+  SESSION_START: 'session:start',
+  SESSION_STOP: 'session:stop',
+  SESSION_LIST: 'session:list',
+  SESSION_GET: 'session:get',
+  SESSION_DELETE: 'session:delete',
+  SESSION_EXPORT: 'session:export',
+
+  // 复盘报告
+  REVIEW_GENERATE: 'review:generate',
+  REVIEW_GET: 'review:get',
+
+  // 配置
+  CONFIG_GET: 'config:get',
+  CONFIG_SET: 'config:set',
+  CONFIG_GET_SECURE: 'config:getSecure',
+  CONFIG_SET_SECURE: 'config:setSecure',
+  CONFIG_DELETE_SECURE: 'config:deleteSecure',
+  CONFIG_RESET: 'config:reset',
+  CONFIG_EXPORT: 'config:export',
+  CONFIG_IMPORT: 'config:import',
+
+  // 快捷键
+  HOTKEY_UPDATE: 'hotkey:update',
+  HOTKEY_GET_ALL: 'hotkey:getAll',
+  HOTKEY_RESET: 'hotkey:reset',
+  HOTKEY_CHECK_CONFLICT: 'hotkey:checkConflict',
+
+  // 音频设备
+  AUDIO_LIST_DEVICES: 'audio:listDevices',
+  AUDIO_CHECK_BLACKHOLE: 'audio:checkBlackhole',
+} as const
+
+/** IPC 通道名称类型 */
+export type IPCChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS]
