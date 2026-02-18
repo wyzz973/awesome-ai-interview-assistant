@@ -1,6 +1,37 @@
 @import 'tailwindcss';
 @plugin '@tailwindcss/typography';
 
+@theme {
+  --color-bg-primary: #0f1117;
+  --color-bg-secondary: #1a1d27;
+  --color-bg-tertiary: #242836;
+  --color-bg-elevated: #2a2e3d;
+  --color-bg-hover: #323748;
+
+  --color-text-primary: #e4e6ed;
+  --color-text-secondary: #9ca0ae;
+  --color-text-muted: #6b7084;
+
+  --color-border-default: #2e3347;
+  --color-border-subtle: #232738;
+  --color-border-focus: #5b8def;
+
+  --color-accent-primary: #5b8def;
+  --color-accent-primary-hover: #4a7de0;
+  --color-accent-danger: #f87171;
+  --color-accent-warning: #fbbf24;
+  --color-accent-success: #34d399;
+
+  --color-status-success: #34d399;
+  --color-status-error: #f87171;
+  --color-status-info: #60a5fa;
+  --color-status-warning: #fbbf24;
+}
+
+* {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
   padding: 0;
@@ -12,4 +43,99 @@ body {
     'Helvetica Neue',
     Arial,
     sans-serif;
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Electron 窗口拖拽区域 */
+.drag-region {
+  -webkit-app-region: drag;
+}
+
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* 滚动条样式 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--color-border-default);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-text-muted);
+}
+
+/* Loading spinner 动画 */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Skeleton 加载动画 */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--color-bg-tertiary) 25%,
+    var(--color-bg-hover) 50%,
+    var(--color-bg-tertiary) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* Toast 入场/退场动画 */
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes toast-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+}
+
+.toast-enter {
+  animation: toast-in 0.2s ease-out forwards;
+}
+
+.toast-exit {
+  animation: toast-out 0.15s ease-in forwards;
 }
