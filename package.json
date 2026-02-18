@@ -7,7 +7,11 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "package": "npm run build && electron-builder --mac --config electron-builder.yml",
+    "package:dmg": "npm run build && electron-builder --mac dmg --config electron-builder.yml",
+    "package:zip": "npm run build && electron-builder --mac zip --config electron-builder.yml",
+    "package:dir": "npm run build && electron-builder --mac dir --config electron-builder.yml"
   },
   "dependencies": {
     "@electron-toolkit/utils": "^4.0.0",
@@ -45,6 +49,7 @@
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
     "electron": "^33.2.1",
+    "electron-builder": "^26.8.1",
     "electron-vite": "^2.3.0",
     "typescript": "^5.6.3",
     "vite": "^5.4.11",
