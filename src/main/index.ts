@@ -1,21 +1,15 @@
 import { app, BrowserWindow, shell } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
+import { StealthWindow } from './window/StealthWindow'
+
+const stealthWindow = new StealthWindow()
 
 function createWindow(): void {
-  const mainWindow = new BrowserWindow({
-    width: 900,
-    height: 670,
-    show: false,
-    autoHideMenuBar: true,
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
-    }
-  })
+  const mainWindow = stealthWindow.create()
 
   mainWindow.on('ready-to-show', () => {
-    mainWindow.show()
+    stealthWindow.show()
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
