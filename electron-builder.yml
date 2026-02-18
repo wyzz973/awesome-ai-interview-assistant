@@ -1,0 +1,57 @@
+appId: com.aiinterview.assistant
+productName: AI 面试助手
+copyright: Copyright © 2026
+
+directories:
+  buildResources: build
+  output: dist
+
+files:
+  - out/**/*
+  - resources/**/*
+  - "!**/*.{ts,tsx,map}"
+
+extraMetadata:
+  main: ./out/main/index.js
+
+mac:
+  category: public.app-category.productivity
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
+  icon: build/icon.icns
+  darkModeSupport: true
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.inherit.plist
+  extendInfo:
+    NSMicrophoneUsageDescription: "AI 面试助手需要访问麦克风来录制面试对话。"
+    NSScreenCaptureUsageDescription: "AI 面试助手需要截屏权限来捕获面试相关内容。"
+
+dmg:
+  artifactName: "${productName}-${version}-${arch}.${ext}"
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+
+asar: true
+
+electronDownload:
+  mirror: https://npmmirror.com/mirrors/electron/
+
+publish: null
