@@ -43,11 +43,11 @@ function ProviderEditor({
   const handleTest = async () => {
     setTesting(true)
     try {
-      if (window.electron?.ipcRenderer) {
-        await window.electron.ipcRenderer.invoke('llm:testConnection', form)
-        toast.success('连接成功')
+      const result = await window.api.llmTestConnection()
+      if (result?.success === false) {
+        toast.error(result.error ?? '连接失败，请检查配置')
       } else {
-        toast.info('IPC 未就绪，跳过测试')
+        toast.success('连接成功')
       }
     } catch {
       toast.error('连接失败，请检查配置')

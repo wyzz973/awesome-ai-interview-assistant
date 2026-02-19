@@ -4,10 +4,12 @@ import { useSettingsStore } from '../../stores/settingsStore'
 import { Button } from '../Common'
 import { toast } from '../Common'
 import type { HotkeyAction } from '@shared/types'
+import { formatHotkey } from '../../utils/formatHotkey'
 
 const HOTKEY_LABELS: Record<HotkeyAction, string> = {
   screenshot: '截屏',
   toggleWindow: '切换窗口',
+  toggleStealth: '隐身模式',
   decreaseOpacity: '降低透明度',
   increaseOpacity: '提高透明度',
   toggleRecording: '开始/停止录音',
@@ -73,7 +75,7 @@ function HotkeyInput({
           }
         `}
       >
-        {recording ? '按下快捷键...' : display}
+        {recording ? '按下快捷键...' : formatHotkey(display)}
       </button>
     </div>
   )

@@ -9,12 +9,13 @@ export default function AudioSetupStep() {
   const checkBlackHole = async () => {
     setChecking(true)
     try {
-      if (window.electron?.ipcRenderer) {
-        const result = await window.electron.ipcRenderer.invoke('audio:checkBlackhole')
-        setBlackholeInstalled(!!result)
-      } else {
-        setBlackholeInstalled(null)
-      }
+      const result = await Promise.race([
+        window.api.audioCheckBlackhole(),
+        new Promise<null>((_, reject) =>
+          setTimeout(() => reject(new Error('timeout')), 3000)
+        ),
+      ])
+      setBlackholeInstalled(result ? !!result.available : false)
     } catch {
       setBlackholeInstalled(false)
     } finally {
