@@ -11,7 +11,7 @@ export default function AnswerPanel() {
     isStreaming,
     currentStreamText,
     enableHistory,
-    addUserMessage,
+    sendMessage,
     setEnableHistory,
     clearMessages,
   } = useChatStore()
@@ -28,7 +28,7 @@ export default function AnswerPanel() {
   const handleSend = () => {
     const text = inputText.trim()
     if (!text || isStreaming) return
-    addUserMessage(text)
+    sendMessage(text)
     setInputText('')
     // 重置 textarea 高度
     if (textareaRef.current) {
