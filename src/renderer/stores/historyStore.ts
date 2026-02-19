@@ -24,7 +24,7 @@ interface HistoryState {
   loadSessionDetail: (sessionId: string) => Promise<void>
   setFilters: (filters: Partial<HistoryFilters>) => void
   deleteSession: (sessionId: string) => Promise<void>
-  exportSession: (sessionId: string, format: 'pdf' | 'markdown' | 'json') => Promise<void>
+  exportSession: (sessionId: string, format: 'markdown' | 'json') => Promise<void>
   generateReview: (sessionId: string) => Promise<void>
   clearDetail: () => void
 }
@@ -93,16 +93,36 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
 
   exportSession: async (sessionId, format) => {
     if (!api) return
-    await api.sessionExport(sessionId, format)
+    const result = (await api.sessionExport(sessionId, format)) as {
+      success: boolean
+      data?: string
+      mimeType?: string
+      error?: string
+    }
+    if (!result?.success || !result.data) {
+      throw new Error(result?.error || '导出失败')
+    }
+
+    // 触发浏览器下载
+    const blob = new Blob([result.data], { type: result.mimeType || 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    const ext = format === 'markdown' ? 'md' : format
+    a.download = `session-${sessionId}.${ext}`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
   },
 
   generateReview: async (sessionId) => {
     if (!api) return
     set({ loading: true })
     try {
-      const review = (await api.reviewGenerate(sessionId)) as ReviewReport | null
-      if (review) {
-        set({ review })
+      const result = (await api.reviewGenerate(sessionId)) as { success: boolean; report?: ReviewReport } | null
+      if (result?.success && result.report) {
+        set({ review: result.report })
       }
     } finally {
       set({ loading: false })

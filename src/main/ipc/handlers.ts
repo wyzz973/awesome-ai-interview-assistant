@@ -1,5 +1,6 @@
 import { ipcMain, BrowserWindow } from 'electron'
 import { IPC_CHANNELS } from '@shared/types/ipc'
+import { DEFAULT_HOTKEYS } from '@shared/constants'
 import type { ConfigManager } from '@main/config/ConfigManager'
 import type { StealthWindow } from '@main/window/StealthWindow'
 import type { ScreenCapture } from '@main/capture/ScreenCapture'
@@ -449,7 +450,8 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
   })
 
   ipcMain.handle(IPC_CHANNELS.HOTKEY_RESET, async () => {
-    configManager.resetToDefaults()
+    // 只重置快捷键，不要重置所有配置（否则会清空 API Key 等）
+    configManager.setHotkeys({ ...DEFAULT_HOTKEYS })
     return { success: true }
   })
 

@@ -267,6 +267,11 @@ class App {
     }
   }
 
+  /** macOS activate 时重新创建窗口（不重新初始化整个应用） */
+  recreateWindow(): void {
+    this.createWindow()
+  }
+
   async shutdown(): Promise<void> {
     this.log.info('应用退出')
     // 停止录制中的会话
@@ -300,16 +305,24 @@ app.whenReady().then(async () => {
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      // 窗口全部关闭后重新创建（macOS 行为）
-      application.initialize()
+      // 窗口全部关闭后仅重新创建窗口，不重新初始化（避免 IPC handler 重复注册崩溃）
+      application.recreateWindow()
     }
   })
 })
 
+let isQuitting = false
 app.on('before-quit', async (event) => {
+  if (isQuitting) return
+  isQuitting = true
   event.preventDefault()
-  await application.shutdown()
-  app.exit(0)
+  try {
+    await application.shutdown()
+  } catch (err) {
+    console.error('Shutdown error:', err)
+  } finally {
+    app.exit(0)
+  }
 })
 
 app.on('window-all-closed', () => {
