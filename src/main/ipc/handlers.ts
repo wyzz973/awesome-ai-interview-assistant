@@ -62,8 +62,8 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
   })
 
   ipcMain.handle(IPC_CHANNELS.WINDOW_GET_OPACITY, async () => {
-    const config = configManager.get('appearance' as never) as { opacity?: number } | undefined
-    return { opacity: config?.opacity ?? 0.85 }
+    const appearance = configManager.get('appearance')
+    return { opacity: appearance.opacity ?? 0.85 }
   })
 
   // ── Screenshot ──
@@ -158,9 +158,9 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
   // ── ASR ──
   ipcMain.handle(IPC_CHANNELS.ASR_START, async (event) => {
     try {
-      const config = configManager.get('asr' as never) as { sampleRate?: number; language?: string } | undefined
-      const sampleRate = config?.sampleRate ?? 16000
-      const language = config?.language ?? 'zh'
+      const asrConfig = configManager.get('asr')
+      const sampleRate = asrConfig.sampleRate ?? 16000
+      const language = asrConfig.language ?? 'zh'
 
       // 注册转写回调，推送到渲染进程
       const sender = event.sender
@@ -416,9 +416,9 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
   })
 
   // ── Config (fully implemented) ──
-  ipcMain.handle(IPC_CHANNELS.CONFIG_GET, async (_e, key: string) => configManager.get(key as never))
+  ipcMain.handle(IPC_CHANNELS.CONFIG_GET, async (_e, key: string) => configManager.get(key))
   ipcMain.handle(IPC_CHANNELS.CONFIG_SET, async (_e, key: string, value: unknown) => {
-    configManager.set(key as never, value as never)
+    configManager.set(key, value)
     return { success: true }
   })
   ipcMain.handle(IPC_CHANNELS.CONFIG_GET_SECURE, async (_e, key: string) => configManager.getSecure(key))
@@ -435,7 +435,7 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
   })
   ipcMain.handle(IPC_CHANNELS.CONFIG_EXPORT, async () => configManager.exportConfig())
   ipcMain.handle(IPC_CHANNELS.CONFIG_IMPORT, async (_e, config: unknown) => {
-    configManager.importConfig(config as never)
+    configManager.importConfig(config as Partial<import('@shared/types/config').AppConfig>)
     return { success: true }
   })
 

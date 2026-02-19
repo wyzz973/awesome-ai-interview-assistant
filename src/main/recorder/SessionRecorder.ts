@@ -31,7 +31,7 @@ export class SessionRecorder {
         reject(new Error('Worker start timeout'))
       }, 10000)
 
-      this.worker!.on('message', (response: WorkerResponse) => {
+      this.worker!.once('message', (response: WorkerResponse) => {
         if (response.type === 'started' && response.sessionId) {
           clearTimeout(timeout)
           this.sessionId = response.sessionId
@@ -44,7 +44,7 @@ export class SessionRecorder {
         }
       })
 
-      this.worker!.on('error', (err) => {
+      this.worker!.once('error', (err) => {
         clearTimeout(timeout)
         log.error('Worker 错误', err)
         reject(err)
@@ -106,7 +106,7 @@ export class SessionRecorder {
         resolve(this.sessionId)
       }, 10000)
 
-      this.worker!.on('message', (response: WorkerResponse) => {
+      this.worker!.once('message', (response: WorkerResponse) => {
         if (response.type === 'stopped' || response.type === 'error') {
           clearTimeout(timeout)
           const id = response.sessionId ?? this.sessionId

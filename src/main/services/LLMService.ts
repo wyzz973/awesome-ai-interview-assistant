@@ -10,9 +10,9 @@ export class LLMService {
     this.config = { ...config }
   }
 
-  updateConfig(config: Partial<LLMProvider>): void {
+  updateConfig(config: LLMProvider): void {
     log.info('LLM 配置更新')
-    this.config = { ...this.config, ...config }
+    this.config = { ...config }
   }
 
   /** 流式文本聊天 */

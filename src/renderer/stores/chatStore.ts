@@ -58,6 +58,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   sendMessage: async (content) => {
     if (!api) return
+    if (get().isStreaming) {
+      log.warn('正在流式响应中，拒绝新请求')
+      return
+    }
     const { addUserMessage, startStream, appendStreamChunk, endStream, enableHistory } = get()
 
     addUserMessage(content)
@@ -109,6 +113,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   sendScreenshot: async (imageBase64, prompt) => {
     if (!api) return
+    if (get().isStreaming) {
+      log.warn('正在流式响应中，拒绝新截屏分析请求')
+      return
+    }
     const { addUserMessage, startStream, appendStreamChunk, endStream } = get()
 
     // 用 data URI 作为截屏缩略图路径

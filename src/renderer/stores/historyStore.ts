@@ -24,7 +24,7 @@ interface HistoryState {
   loadSessionDetail: (sessionId: string) => Promise<void>
   setFilters: (filters: Partial<HistoryFilters>) => void
   deleteSession: (sessionId: string) => Promise<void>
-  exportSession: (sessionId: string, format: 'markdown' | 'json') => Promise<void>
+  exportSession: (sessionId: string, format: 'pdf' | 'markdown' | 'json') => Promise<void>
   generateReview: (sessionId: string) => Promise<void>
   clearDetail: () => void
 }

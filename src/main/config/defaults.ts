@@ -11,7 +11,7 @@ import {
 const DEFAULT_LLM_PROVIDER: LLMProvider = {
   id: 'openai',
   name: 'OpenAI',
-  baseURL: 'https://api.openai.com',
+  baseURL: 'https://api.openai.com/v1',
   apiKey: '',
   model: 'gpt-4o',
   maxTokens: 4096,

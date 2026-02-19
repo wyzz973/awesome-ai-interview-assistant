@@ -26,7 +26,7 @@ export default function ExportButton({ sessionId }: ExportButtonProps) {
 
   return (
     <div className="flex gap-2">
-      <Button size="sm" variant="secondary" loading={exporting} onClick={() => handleExport('pdf')}>
+      <Button size="sm" variant="secondary" disabled title="即将支持">
         <Download size={14} />
         PDF
       </Button>

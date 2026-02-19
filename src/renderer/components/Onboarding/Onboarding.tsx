@@ -24,7 +24,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   const [asrConfig, setAsrConfig] = useState<ASRConfig>(
     config?.asr ?? {
       provider: 'whisper',
-      language: 'zh',
+      language: 'zh-en',
       sampleRate: 16000,
     }
   )
