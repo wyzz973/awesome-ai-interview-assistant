@@ -30,12 +30,7 @@ function ProviderEditor({
 
   // 当 provider prop 变化时（例如 loadConfig 重载），同步到表单状态
   const prevProviderRef = useRef(provider)
-  if (
-    provider.id !== prevProviderRef.current.id ||
-    provider.model !== prevProviderRef.current.model ||
-    provider.baseURL !== prevProviderRef.current.baseURL ||
-    provider.apiKey !== prevProviderRef.current.apiKey
-  ) {
+  if (JSON.stringify(provider) !== JSON.stringify(prevProviderRef.current)) {
     prevProviderRef.current = provider
     setForm(provider)
   }

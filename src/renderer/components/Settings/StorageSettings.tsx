@@ -11,7 +11,36 @@ export default function StorageSettings() {
 
   const handleExport = async () => {
     try {
-      await window.api.configExport()
+      const config = await window.api.configExport()
+      if (!config) {
+        toast.error('导出失败：无法读取配置')
+        return
+      }
+
+      // BUG-24: mask 敏感字段
+      const safeConfig = JSON.parse(JSON.stringify(config))
+      for (const role of ['screenshot', 'chat', 'review'] as const) {
+        if (safeConfig.llm?.[role]?.apiKey) {
+          safeConfig.llm[role].apiKey = '***'
+        }
+      }
+      if (safeConfig.asr?.whisper?.apiKey) safeConfig.asr.whisper.apiKey = '***'
+      if (safeConfig.asr?.aliyun?.accessKeyId) safeConfig.asr.aliyun.accessKeyId = '***'
+      if (safeConfig.asr?.aliyun?.accessKeySecret) safeConfig.asr.aliyun.accessKeySecret = '***'
+      if (safeConfig.asr?.tencent?.secretId) safeConfig.asr.tencent.secretId = '***'
+      if (safeConfig.asr?.tencent?.secretKey) safeConfig.asr.tencent.secretKey = '***'
+
+      // BUG-25: 生成文件下载
+      const json = JSON.stringify(safeConfig, null, 2)
+      const blob = new Blob([json], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const today = new Date().toISOString().slice(0, 10)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `config-export-${today}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+
       toast.success('配置已导出')
     } catch {
       toast.error('导出失败')
