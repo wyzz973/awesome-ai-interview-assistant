@@ -13,6 +13,9 @@ import type { TranscriptRepo } from '@main/db/repositories/TranscriptRepo'
 import type { ScreenshotQARepo } from '@main/db/repositories/ScreenshotQARepo'
 import type { ReviewRepo } from '@main/db/repositories/ReviewRepo'
 import type { ChatMessage } from '@shared/types/llm'
+import { getLogger } from '../logger'
+
+const log = getLogger('IPC')
 
 export interface IPCDependencies {
   configManager: ConfigManager
@@ -30,6 +33,7 @@ export interface IPCDependencies {
 }
 
 export function registerIPCHandlers(deps: IPCDependencies): void {
+  log.debug('注册 IPC 处理器')
   const {
     configManager,
     stealthWindow,

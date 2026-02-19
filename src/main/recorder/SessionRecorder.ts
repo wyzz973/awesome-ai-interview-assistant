@@ -1,6 +1,9 @@
 import { Worker } from 'worker_threads'
 import { join } from 'path'
 import type { WorkerMessage, WorkerResponse } from '../../workers/sessionWorker'
+import { getLogger } from '../logger'
+
+const log = getLogger('SessionRecorder')
 
 export class SessionRecorder {
   private worker: Worker | null = null
@@ -17,6 +20,7 @@ export class SessionRecorder {
     if (this.recording) {
       throw new Error('A session is already being recorded')
     }
+    log.info('开始录制会话')
 
     const workerPath = join(__dirname, 'sessionWorker.js')
 
@@ -32,6 +36,7 @@ export class SessionRecorder {
           clearTimeout(timeout)
           this.sessionId = response.sessionId
           this.recording = true
+          log.info('会话录制已启动', { sessionId: response.sessionId })
           resolve(response.sessionId)
         } else if (response.type === 'error') {
           clearTimeout(timeout)
@@ -41,6 +46,7 @@ export class SessionRecorder {
 
       this.worker!.on('error', (err) => {
         clearTimeout(timeout)
+        log.error('Worker 错误', err)
         reject(err)
       })
 
@@ -92,6 +98,7 @@ export class SessionRecorder {
     if (!this.recording || !this.worker) {
       return null
     }
+    log.info('停止录制会话', { sessionId: this.sessionId })
 
     return new Promise<string | null>((resolve) => {
       const timeout = setTimeout(() => {

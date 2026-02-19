@@ -2,6 +2,9 @@ import { desktopCapturer, screen } from 'electron'
 import type { NativeImage } from 'electron'
 import type { StealthWindow } from '../window/StealthWindow'
 import type { SelectorWindow, SelectionRegion } from '../window/SelectorWindow'
+import { getLogger } from '../logger'
+
+const log = getLogger('ScreenCapture')
 
 export interface CaptureResult {
   image: Buffer
@@ -20,6 +23,7 @@ export class ScreenCapture {
 
   /** 完整截屏流程：隐藏窗口 → 截全屏 → 选区 → 裁剪 → 恢复窗口 */
   async captureRegion(): Promise<CaptureResult | null> {
+    log.debug('开始截屏选区')
     // 隐藏隐身窗口避免截到自身
     this.stealthWindow.hide()
 
@@ -44,6 +48,7 @@ export class ScreenCapture {
       const pngBuffer = cropped.toPNG()
       const base64 = pngBuffer.toString('base64')
 
+      log.debug('截屏完成', { width: region.width, height: region.height })
       return { image: pngBuffer, imageBase64: base64, region }
     } finally {
       // 恢复隐身窗口

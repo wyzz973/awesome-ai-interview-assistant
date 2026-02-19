@@ -2,6 +2,9 @@ import { app, Tray, Menu, nativeImage } from 'electron'
 import { join } from 'path'
 import { DEFAULT_HOTKEYS } from '@shared/constants'
 import type { HotkeyConfig } from '@shared/types/hotkey'
+import { getLogger } from '../logger'
+
+const log = getLogger('TrayManager')
 
 export type TrayStatus = 'ready' | 'recording'
 
@@ -20,6 +23,7 @@ export class TrayManager {
   private hotkeys: HotkeyConfig = DEFAULT_HOTKEYS
 
   create(callbacks: TrayCallbacks): void {
+    log.debug('创建托盘图标')
     this.callbacks = callbacks
 
     const iconPath = join(__dirname, '../../resources/tray-icon.png')

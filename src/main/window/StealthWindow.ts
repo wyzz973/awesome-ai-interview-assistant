@@ -2,6 +2,9 @@ import { BrowserWindow, screen } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { DEFAULT_APPEARANCE } from '@shared/constants'
+import { getLogger } from '../logger'
+
+const log = getLogger('StealthWindow')
 
 export class StealthWindow {
   private window: BrowserWindow | null = null
@@ -9,6 +12,7 @@ export class StealthWindow {
   private isInteractable: boolean = true
 
   create(): BrowserWindow {
+    log.debug('创建隐身窗口')
     const { width: screenWidth, height: screenHeight } = screen.getPrimaryDisplay().workAreaSize
 
     const winWidth = DEFAULT_APPEARANCE.panelWidth
@@ -63,6 +67,7 @@ export class StealthWindow {
 
   toggle(): void {
     if (!this.window) return
+    log.debug('切换窗口可见性', { visible: !this.window.isVisible() })
     if (this.window.isVisible()) {
       this.hide()
     } else {
