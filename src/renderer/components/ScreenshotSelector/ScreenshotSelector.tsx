@@ -36,6 +36,10 @@ function ScreenshotSelector(): JSX.Element {
         bgImageRef.current = img
         setImageReady(true)
       }
+      img.onerror = () => {
+        // 图片加载失败，仍标记为就绪以显示遮罩（允许用户 ESC 退出）
+        setImageReady(true)
+      }
       img.src = dataURL
     })
 
@@ -62,9 +66,12 @@ function ScreenshotSelector(): JSX.Element {
     canvas.width = window.innerWidth
     canvas.height = window.innerHeight
 
-    // 绘制截图作为背景
+    // 绘制截图作为背景（无图时填充黑色避免白屏）
     if (bgImageRef.current) {
       ctx.drawImage(bgImageRef.current, 0, 0, canvas.width, canvas.height)
+    } else {
+      ctx.fillStyle = '#000000'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
     }
 
     // 半透明遮罩

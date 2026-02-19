@@ -31,6 +31,7 @@ export class SelectorWindow {
         resizable: false,
         movable: false,
         enableLargerThanScreen: true,
+        backgroundColor: '#000000',
         webPreferences: {
           preload: join(__dirname, '../preload/index.js'),
           sandbox: false,
@@ -67,7 +68,9 @@ export class SelectorWindow {
 
       ipcMain.once('selector:confirm', onConfirm)
       ipcMain.once('selector:cancel', onCancel)
-      ipcMain.once('selector:requestScreenshot', onRequestScreenshot)
+      // 使用 on 而非 once，因为 React StrictMode 开发模式下组件会双重挂载
+      // 导致 selectorRequestScreenshot 发送两次，once 只处理第一次
+      ipcMain.on('selector:requestScreenshot', onRequestScreenshot)
 
       this.window.on('closed', () => {
         ipcMain.removeListener('selector:confirm', onConfirm)
