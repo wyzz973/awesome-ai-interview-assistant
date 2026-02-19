@@ -22,6 +22,7 @@ import { SessionRecorder } from './recorder/SessionRecorder'
 import { HotkeyManager } from './hotkey/HotkeyManager'
 import { TrayManager } from './tray/TrayManager'
 import { registerIPCHandlers } from './ipc/handlers'
+import { initializeLogger, getLogger } from './logger'
 
 class App {
   private configManager!: ConfigManager
@@ -42,7 +43,12 @@ class App {
   private screenshotQARepo!: ScreenshotQARepo
   private reviewRepo!: ReviewRepo
 
+  private log = getLogger('App')
+
   async initialize(): Promise<void> {
+    initializeLogger()
+    this.log.info('应用启动', { version: app.getVersion(), packaged: app.isPackaged })
+
     // 1. ConfigManager
     this.configManager = new ConfigManager()
 
@@ -137,6 +143,7 @@ class App {
   }
 
   private createWindow(): void {
+    this.log.info('创建主窗口')
     const mainWindow = this.stealthWindow.create()
 
     mainWindow.on('ready-to-show', () => {
@@ -208,7 +215,7 @@ class App {
         })
       }
     } catch (err) {
-      console.error('Screenshot failed:', err)
+      this.log.error('截屏失败', err)
     }
   }
 
@@ -232,13 +239,13 @@ class App {
           const asrConfig = this.configManager.get('asr')
           await this.asrService.startStream(asrConfig.sampleRate, asrConfig.language)
         } catch (asrErr) {
-          console.warn('ASR start failed (will record without transcription):', asrErr)
+          this.log.warn('ASR 启动失败（将不带转写继续录制）', asrErr)
         }
 
         try {
           await this.audioCapture.start()
         } catch (audioErr) {
-          console.warn('Audio capture start failed:', audioErr)
+          this.log.warn('音频捕获启动失败', audioErr)
         }
 
         this.stealthWindow.disableInteraction()
@@ -246,7 +253,7 @@ class App {
         this.sendToRenderer('recording:started', { sessionId })
       }
     } catch (err) {
-      console.error('Toggle recording failed:', err)
+      this.log.error('录制切换失败', err)
       this.sendToRenderer('recording:error', {
         message: err instanceof Error ? err.message : String(err)
       })
@@ -261,6 +268,7 @@ class App {
   }
 
   async shutdown(): Promise<void> {
+    this.log.info('应用退出')
     // 停止录制中的会话
     if (this.sessionRecorder?.isRecording()) {
       await this.sessionRecorder.stopSession()
