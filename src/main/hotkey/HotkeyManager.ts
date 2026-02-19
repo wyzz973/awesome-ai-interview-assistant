@@ -2,8 +2,11 @@ import { globalShortcut } from 'electron'
 import type { HotkeyAction, HotkeyConfig } from '@shared/types/hotkey'
 import { DEFAULT_HOTKEYS } from '@shared/constants'
 import type { ConfigManager } from '../config/ConfigManager'
+import { getLogger } from '../logger'
 
 type HotkeyHandler = () => void
+
+const log = getLogger('HotkeyManager')
 
 export class HotkeyManager {
   private configManager: ConfigManager
@@ -26,6 +29,7 @@ export class HotkeyManager {
   /** 根据当前配置注册所有快捷键 */
   registerAll(): void {
     const hotkeys = this.configManager.getHotkeys()
+    log.debug('注册所有快捷键', { count: Object.keys(hotkeys).length })
     for (const [action, accelerator] of Object.entries(hotkeys) as [HotkeyAction, string][]) {
       this.registerOne(action, accelerator)
     }
@@ -33,6 +37,7 @@ export class HotkeyManager {
 
   /** 注销所有快捷键 */
   unregisterAll(): void {
+    log.debug('注销所有快捷键')
     for (const [, accelerator] of this.registeredAccelerators) {
       globalShortcut.unregister(accelerator)
     }
@@ -41,6 +46,7 @@ export class HotkeyManager {
 
   /** 热重载：注销全部后重新注册 */
   reload(): void {
+    log.debug('重载快捷键配置')
     this.unregisterAll()
     this.registerAll()
   }
@@ -97,8 +103,9 @@ export class HotkeyManager {
     const success = globalShortcut.register(accelerator, handler)
     if (success) {
       this.registeredAccelerators.set(action, accelerator)
+      log.debug('快捷键已注册', { action, accelerator })
     } else {
-      console.warn(`HotkeyManager: failed to register "${accelerator}" for action "${action}"`)
+      log.warn('快捷键注册失败', { accelerator, action })
     }
   }
 }

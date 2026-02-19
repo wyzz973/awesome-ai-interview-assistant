@@ -3,6 +3,9 @@ import * as keytar from 'keytar'
 import type { AppConfig } from '@shared/types/config'
 import type { HotkeyConfig } from '@shared/types/hotkey'
 import { DEFAULT_APP_CONFIG, KEYCHAIN_SERVICE } from './defaults'
+import { getLogger } from '../logger'
+
+const log = getLogger('ConfigManager')
 
 type ChangeCallback = (newValue: unknown, oldValue: unknown) => void
 
@@ -29,6 +32,7 @@ export class ConfigManager {
   set<K extends keyof AppConfig>(key: K, value: AppConfig[K]): void
   set(key: string, value: unknown): void
   set(key: string, value: unknown): void {
+    log.debug('配置更新', { key })
     const oldValue = this.store.get(key as keyof AppConfig)
     this.store.set(key as keyof AppConfig, value as never)
     this.notifyListeners(key, value, oldValue)
@@ -77,6 +81,7 @@ export class ConfigManager {
 
   /** 导入配置（合并覆盖） */
   importConfig(config: Partial<AppConfig>): void {
+    log.info('导入配置')
     const current = this.store.store
     const merged = { ...current, ...config }
     this.store.store = merged
@@ -89,6 +94,7 @@ export class ConfigManager {
 
   /** 重置为默认配置 */
   resetToDefaults(): void {
+    log.info('重置为默认配置')
     const oldConfig = this.store.store
     this.store.clear()
     // store.clear 后会自动使用 defaults，通知所有 key 变更
@@ -112,7 +118,7 @@ export class ConfigManager {
         try {
           cb(newValue, oldValue)
         } catch (err) {
-          console.error(`ConfigManager: listener error for key "${key}":`, err)
+          log.error('配置监听回调执行异常', { key, error: err })
         }
       }
     }

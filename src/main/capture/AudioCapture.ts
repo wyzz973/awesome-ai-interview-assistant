@@ -1,8 +1,10 @@
 import { systemPreferences } from 'electron'
 import { exec } from 'child_process'
 import { promisify } from 'util'
+import { getLogger } from '../logger'
 
 const execAsync = promisify(exec)
+const log = getLogger('AudioCapture')
 
 export interface AudioDevice {
   id: string
@@ -33,6 +35,7 @@ export class AudioCapture {
   /** 开始捕获 */
   async start(micDeviceId?: string, systemDeviceId?: string): Promise<void> {
     if (this.isCapturing) return
+    log.info('开始音频捕获')
 
     // 请求麦克风权限 (macOS)
     if (process.platform === 'darwin') {
@@ -60,6 +63,7 @@ export class AudioCapture {
 
   /** 停止捕获 */
   stop(): void {
+    log.info('停止音频捕获')
     this.isCapturing = false
 
     if (this.micStream && this.micStream.state !== 'inactive') {
@@ -108,12 +112,41 @@ export class AudioCapture {
   /** 检测 BlackHole 是否已安装 */
   async checkBlackHole(): Promise<boolean> {
     try {
+      // 优先检查驱动文件是否存在（system_profiler 可能不列出虚拟音频设备）
       const { stdout } = await execAsync(
-        'system_profiler SPAudioDataType 2>/dev/null | grep -i blackhole',
+        'ls /Library/Audio/Plug-Ins/HAL/ 2>/dev/null | grep -i blackhole',
       )
       return stdout.trim().length > 0
     } catch {
       return false
+    }
+  }
+
+  /** 通过 brew 安装 BlackHole 2ch（在终端中执行） */
+  async installBlackHole(): Promise<{ success: boolean; error?: string; terminalOpened?: boolean }> {
+    try {
+      // 先检查是否已安装
+      const installed = await this.checkBlackHole()
+      if (installed) {
+        return { success: true }
+      }
+
+      // 检查 brew 是否可用
+      try {
+        await execAsync('which brew')
+      } catch {
+        return { success: false, error: '未检测到 Homebrew，请先安装 Homebrew: https://brew.sh' }
+      }
+
+      // 在终端中执行安装（cask 需要 sudo 权限，必须在真实终端中运行）
+      await execAsync(
+        `osascript -e 'tell application "Terminal" to do script "HOMEBREW_NO_AUTO_UPDATE=1 brew install blackhole-2ch"' -e 'tell application "Terminal" to activate'`,
+      )
+
+      return { success: true, terminalOpened: true }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      return { success: false, error: `无法打开终端: ${msg}` }
     }
   }
 
@@ -137,7 +170,7 @@ export class AudioCapture {
 
       this.micStream.start(250) // 250ms chunks
     } catch (err) {
-      console.error('AudioCapture: mic capture failed:', err)
+      log.error('麦克风捕获失败', err)
     }
   }
 
@@ -159,7 +192,7 @@ export class AudioCapture {
 
       this.systemStream.start(250) // 250ms chunks
     } catch (err) {
-      console.error('AudioCapture: system audio capture failed:', err)
+      log.error('系统音频捕获失败', err)
     }
   }
 }
