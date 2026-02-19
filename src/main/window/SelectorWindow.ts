@@ -13,7 +13,7 @@ export class SelectorWindow {
   private window: BrowserWindow | null = null
 
   /** 打开选区窗口，返回用户选择的区域，取消返回 null */
-  selectRegion(): Promise<SelectionRegion | null> {
+  selectRegion(screenshotDataURL: string): Promise<SelectionRegion | null> {
     return new Promise((resolve) => {
       const display = screen.getPrimaryDisplay()
       const { width, height } = display.size
@@ -23,14 +23,14 @@ export class SelectorWindow {
         height,
         x: 0,
         y: 0,
-        fullscreen: true,
-        transparent: true,
+        show: false,
         frame: false,
         alwaysOnTop: true,
         skipTaskbar: true,
         hasShadow: false,
         resizable: false,
         movable: false,
+        enableLargerThanScreen: true,
         webPreferences: {
           preload: join(__dirname, '../preload/index.js'),
           sandbox: false,
@@ -38,6 +38,7 @@ export class SelectorWindow {
       })
 
       this.window.setAlwaysOnTop(true, 'screen-saver')
+      this.window.setVisibleOnAllWorkspaces(true)
 
       const onConfirm = (_event: Electron.IpcMainEvent, region: SelectionRegion): void => {
         cleanup()
@@ -49,9 +50,15 @@ export class SelectorWindow {
         resolve(null)
       }
 
+      // 渲染器请求截图数据
+      const onRequestScreenshot = (event: Electron.IpcMainEvent): void => {
+        event.reply('selector:screenshot', screenshotDataURL)
+      }
+
       const cleanup = (): void => {
         ipcMain.removeListener('selector:confirm', onConfirm)
         ipcMain.removeListener('selector:cancel', onCancel)
+        ipcMain.removeListener('selector:requestScreenshot', onRequestScreenshot)
         if (this.window && !this.window.isDestroyed()) {
           this.window.close()
         }
@@ -60,10 +67,12 @@ export class SelectorWindow {
 
       ipcMain.once('selector:confirm', onConfirm)
       ipcMain.once('selector:cancel', onCancel)
+      ipcMain.once('selector:requestScreenshot', onRequestScreenshot)
 
       this.window.on('closed', () => {
         ipcMain.removeListener('selector:confirm', onConfirm)
         ipcMain.removeListener('selector:cancel', onCancel)
+        ipcMain.removeListener('selector:requestScreenshot', onRequestScreenshot)
         this.window = null
         resolve(null)
       })
@@ -79,6 +88,7 @@ export class SelectorWindow {
 
       this.window.once('ready-to-show', () => {
         this.window?.show()
+        this.window?.focus()
       })
     })
   }

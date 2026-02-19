@@ -18,7 +18,7 @@ export class SessionRecorder {
       throw new Error('A session is already being recorded')
     }
 
-    const workerPath = join(__dirname, '../../workers/sessionWorker.js')
+    const workerPath = join(__dirname, 'sessionWorker.js')
 
     this.worker = new Worker(workerPath)
 

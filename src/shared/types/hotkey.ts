@@ -2,6 +2,7 @@
 export type HotkeyAction =
   | 'screenshot'
   | 'toggleWindow'
+  | 'toggleStealth'
   | 'decreaseOpacity'
   | 'increaseOpacity'
   | 'toggleRecording'

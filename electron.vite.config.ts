@@ -16,6 +16,14 @@ export default defineConfig({
         ]
       })
     ],
+    build: {
+      rollupOptions: {
+        input: {
+          index: resolve('src/main/index.ts'),
+          sessionWorker: resolve('src/workers/sessionWorker.ts')
+        }
+      }
+    },
     resolve: {
       alias: {
         '@shared': resolve('src/shared'),

@@ -21,6 +21,16 @@ const api = {
   selectorCancel: () => {
     ipcRenderer.send('selector:cancel')
   },
+  /** 截屏选区：请求截图数据 */
+  selectorRequestScreenshot: () => {
+    ipcRenderer.send('selector:requestScreenshot')
+  },
+  /** 截屏选区：接收截图数据 */
+  onSelectorScreenshot: (callback: (dataURL: string) => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, dataURL: string) => callback(dataURL)
+    ipcRenderer.on('selector:screenshot', handler)
+    return () => ipcRenderer.removeListener('selector:screenshot', handler)
+  },
 
   // ── LLM ──
   llmChat: (messages: unknown[]) => ipcRenderer.invoke(IPC_CHANNELS.LLM_CHAT, messages),

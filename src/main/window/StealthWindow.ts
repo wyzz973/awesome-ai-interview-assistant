@@ -6,7 +6,7 @@ import { DEFAULT_APPEARANCE } from '@shared/constants'
 export class StealthWindow {
   private window: BrowserWindow | null = null
   private opacity: number = DEFAULT_APPEARANCE.opacity
-  private isInteractable: boolean = false
+  private isInteractable: boolean = true
 
   create(): BrowserWindow {
     const { width: screenWidth, height: screenHeight } = screen.getPrimaryDisplay().workAreaSize
@@ -24,12 +24,12 @@ export class StealthWindow {
       x,
       y,
       show: false,
-      transparent: true,
+      transparent: !is.dev,
       frame: false,
       alwaysOnTop: true,
       skipTaskbar: true,
       hasShadow: false,
-      focusable: false,
+      focusable: true,
       resizable: true,
       webPreferences: {
         preload: join(__dirname, '../preload/index.js'),
@@ -37,9 +37,11 @@ export class StealthWindow {
       },
     })
 
-    this.window.setContentProtection(true)
+    // 开发模式下关闭内容保护，方便截图调试
+    if (!is.dev) {
+      this.window.setContentProtection(true)
+    }
     this.window.setAlwaysOnTop(true, 'floating')
-    this.window.setIgnoreMouseEvents(true, { forward: true })
     this.window.setOpacity(this.opacity)
 
     this.window.on('closed', () => {
@@ -95,6 +97,18 @@ export class StealthWindow {
     this.isInteractable = false
     this.window.setIgnoreMouseEvents(true, { forward: true })
     this.window.setFocusable(false)
+  }
+
+  toggleInteraction(): void {
+    if (this.isInteractable) {
+      this.disableInteraction()
+    } else {
+      this.enableInteraction()
+    }
+  }
+
+  isInteractionEnabled(): boolean {
+    return this.isInteractable
   }
 
   getWindow(): BrowserWindow | null {

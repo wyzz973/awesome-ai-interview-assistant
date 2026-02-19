@@ -8,6 +8,18 @@ import type {
 import type { LLMProvider } from '@shared/types'
 import type { HotkeyConfig, HotkeyAction } from '@shared/types'
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const api = (window as any).api as {
+  configGet: (key: string) => Promise<unknown>
+  configSet: (key: string, value: unknown) => Promise<unknown>
+  configExport: () => Promise<AppConfig | null>
+  configImport: (config: unknown) => Promise<unknown>
+  configReset: () => Promise<unknown>
+  hotkeyGetAll: () => Promise<HotkeyConfig | null>
+  hotkeyUpdate: (action: string, accelerator: string) => Promise<unknown>
+  hotkeyReset: () => Promise<unknown>
+} | undefined
+
 interface SettingsState {
   config: AppConfig | null
   loading: boolean
@@ -24,25 +36,19 @@ interface SettingsState {
   setEnableHistoryContext: (enabled: boolean) => Promise<void>
 }
 
-// IPC 调用辅助 — 如果 window.electron 不存在则返回 mock
-function ipcInvoke(channel: string, ...args: unknown[]): Promise<unknown> {
-  if (window.electron?.ipcRenderer) {
-    return window.electron.ipcRenderer.invoke(channel, ...args)
-  }
-  // 开发阶段 fallback
-  console.warn(`[settingsStore] IPC not available: ${channel}`, args)
-  return Promise.resolve(null)
-}
-
 export const useSettingsStore = create<SettingsState>((set, get) => ({
   config: null,
   loading: false,
   saving: false,
 
   loadConfig: async () => {
+    if (!api) {
+      console.warn('[settingsStore] IPC not available')
+      return
+    }
     set({ loading: true })
     try {
-      const config = (await ipcInvoke('config:get')) as AppConfig | null
+      const config = await api.configExport() as AppConfig | null
       if (config) {
         set({ config })
       }
@@ -53,81 +59,75 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
   updateLLMProvider: async (key, provider) => {
     const { config } = get()
-    if (!config) return
-    const updated = {
-      ...config,
-      llm: { ...config.llm, [key]: provider },
-    }
+    if (!config || !api) return
+    const updatedLLM = { ...config.llm, [key]: provider }
+    const updated = { ...config, llm: updatedLLM }
     set({ config: updated, saving: true })
-    await ipcInvoke('config:set', updated)
+    await api.configSet('llm', updatedLLM)
     set({ saving: false })
   },
 
   updateASR: async (asr) => {
     const { config } = get()
-    if (!config) return
-    const updated = { ...config, asr: { ...config.asr, ...asr } }
+    if (!config || !api) return
+    const updatedASR = { ...config.asr, ...asr }
+    const updated = { ...config, asr: updatedASR }
     set({ config: updated, saving: true })
-    await ipcInvoke('config:set', updated)
+    await api.configSet('asr', updatedASR)
     set({ saving: false })
   },
 
   updateHotkey: async (action, accelerator) => {
     const { config } = get()
-    if (!config) return
-    const updated = {
-      ...config,
-      hotkeys: { ...config.hotkeys, [action]: accelerator },
-    }
+    if (!config || !api) return
+    const updatedHotkeys = { ...config.hotkeys, [action]: accelerator }
+    const updated = { ...config, hotkeys: updatedHotkeys }
     set({ config: updated, saving: true })
-    await ipcInvoke('config:set', updated)
+    await api.hotkeyUpdate(action, accelerator)
     set({ saving: false })
   },
 
   resetHotkeys: async () => {
-    await ipcInvoke('hotkey:reset')
+    if (!api) return
+    await api.hotkeyReset()
     await get().loadConfig()
   },
 
   updateAppearance: async (appearance) => {
     const { config } = get()
-    if (!config) return
-    const updated = {
-      ...config,
-      appearance: { ...config.appearance, ...appearance },
-    }
+    if (!config || !api) return
+    const updatedAppearance = { ...config.appearance, ...appearance }
+    const updated = { ...config, appearance: updatedAppearance }
     set({ config: updated, saving: true })
-    await ipcInvoke('config:set', updated)
+    await api.configSet('appearance', updatedAppearance)
     set({ saving: false })
   },
 
   updateStorage: async (storage) => {
     const { config } = get()
-    if (!config) return
-    const updated = {
-      ...config,
-      storage: { ...config.storage, ...storage },
-    }
+    if (!config || !api) return
+    const updatedStorage = { ...config.storage, ...storage }
+    const updated = { ...config, storage: updatedStorage }
     set({ config: updated, saving: true })
-    await ipcInvoke('config:set', updated)
+    await api.configSet('storage', updatedStorage)
     set({ saving: false })
   },
 
   updateSystemPrompt: async (prompt) => {
     const { config } = get()
-    if (!config) return
+    if (!config || !api) return
     const updated = { ...config, systemPrompt: prompt }
     set({ config: updated, saving: true })
-    await ipcInvoke('config:set', updated)
+    await api.configSet('systemPrompt', prompt)
     set({ saving: false })
   },
 
   setEnableHistoryContext: async (enabled) => {
     const { config } = get()
-    if (!config) return
+    if (!config || !api) return
     const updated = { ...config, enableHistoryContext: enabled }
     set({ config: updated, saving: true })
-    await ipcInvoke('config:set', updated)
+    await api.configSet('enableHistoryContext', enabled)
     set({ saving: false })
   },
 }))

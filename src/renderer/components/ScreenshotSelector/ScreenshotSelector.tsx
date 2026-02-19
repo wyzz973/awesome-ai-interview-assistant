@@ -16,13 +16,32 @@ interface Region {
 const api = (window as any).api as {
   selectorConfirm: (region: Region) => void
   selectorCancel: () => void
+  selectorRequestScreenshot: () => void
+  onSelectorScreenshot: (callback: (dataURL: string) => void) => () => void
 }
 
 function ScreenshotSelector(): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const bgImageRef = useRef<HTMLImageElement | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [startPoint, setStartPoint] = useState<Point | null>(null)
   const [currentPoint, setCurrentPoint] = useState<Point | null>(null)
+  const [imageReady, setImageReady] = useState(false)
+
+  // 请求截图数据
+  useEffect(() => {
+    const cleanup = api.onSelectorScreenshot((dataURL: string) => {
+      const img = new Image()
+      img.onload = () => {
+        bgImageRef.current = img
+        setImageReady(true)
+      }
+      img.src = dataURL
+    })
+
+    api.selectorRequestScreenshot()
+    return cleanup
+  }, [])
 
   const getRegion = useCallback((): Region | null => {
     if (!startPoint || !currentPoint) return null
@@ -43,15 +62,34 @@ function ScreenshotSelector(): JSX.Element {
     canvas.width = window.innerWidth
     canvas.height = window.innerHeight
 
+    // 绘制截图作为背景
+    if (bgImageRef.current) {
+      ctx.drawImage(bgImageRef.current, 0, 0, canvas.width, canvas.height)
+    }
+
     // 半透明遮罩
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)'
     ctx.fillRect(0, 0, canvas.width, canvas.height)
 
     const region = getRegion()
     if (!region) return
 
-    // 清除选区区域（露出下面的屏幕）
-    ctx.clearRect(region.x, region.y, region.width, region.height)
+    // 清除选区区域并重新绘制背景（露出清晰的截图）
+    if (bgImageRef.current) {
+      ctx.drawImage(
+        bgImageRef.current,
+        region.x * (bgImageRef.current.width / canvas.width),
+        region.y * (bgImageRef.current.height / canvas.height),
+        region.width * (bgImageRef.current.width / canvas.width),
+        region.height * (bgImageRef.current.height / canvas.height),
+        region.x,
+        region.y,
+        region.width,
+        region.height,
+      )
+    } else {
+      ctx.clearRect(region.x, region.y, region.width, region.height)
+    }
 
     // 选区边框
     ctx.strokeStyle = '#00aaff'
@@ -78,7 +116,7 @@ function ScreenshotSelector(): JSX.Element {
     )
     ctx.fillStyle = '#ffffff'
     ctx.fillText(label, labelX + padding, labelY + textHeight)
-  }, [getRegion])
+  }, [getRegion, imageReady])
 
   useEffect(() => {
     draw()

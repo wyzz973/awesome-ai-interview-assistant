@@ -191,6 +191,7 @@ class App {
   private registerHotkeyHandlers(): void {
     this.hotkeyManager.registerHandler('screenshot', () => this.handleScreenshot())
     this.hotkeyManager.registerHandler('toggleWindow', () => this.stealthWindow.toggle())
+    this.hotkeyManager.registerHandler('toggleStealth', () => this.stealthWindow.toggleInteraction())
     this.hotkeyManager.registerHandler('decreaseOpacity', () => this.stealthWindow.decreaseOpacity())
     this.hotkeyManager.registerHandler('increaseOpacity', () => this.stealthWindow.increaseOpacity())
     this.hotkeyManager.registerHandler('toggleRecording', () => this.handleToggleRecording())
@@ -219,23 +220,36 @@ class App {
           await this.asrService.stopStream()
         }
         this.audioCapture.stop()
+        this.stealthWindow.enableInteraction()
         this.trayManager.setStatus('ready')
         this.sendToRenderer('recording:stopped')
       } else {
+        // 启动会话录制
         const sessionId = await this.sessionRecorder.startSession()
 
-        // 启动 ASR
-        const asrConfig = this.configManager.get('asr')
-        await this.asrService.startStream(asrConfig.sampleRate, asrConfig.language)
+        // ASR 和音频捕获可能因未配置而失败，不阻塞录制
+        try {
+          const asrConfig = this.configManager.get('asr')
+          await this.asrService.startStream(asrConfig.sampleRate, asrConfig.language)
+        } catch (asrErr) {
+          console.warn('ASR start failed (will record without transcription):', asrErr)
+        }
 
-        // 启动音频捕获
-        await this.audioCapture.start()
+        try {
+          await this.audioCapture.start()
+        } catch (audioErr) {
+          console.warn('Audio capture start failed:', audioErr)
+        }
 
+        this.stealthWindow.disableInteraction()
         this.trayManager.setStatus('recording')
         this.sendToRenderer('recording:started', { sessionId })
       }
     } catch (err) {
       console.error('Toggle recording failed:', err)
+      this.sendToRenderer('recording:error', {
+        message: err instanceof Error ? err.message : String(err)
+      })
     }
   }
 

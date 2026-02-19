@@ -1,4 +1,5 @@
 import { desktopCapturer, screen } from 'electron'
+import type { NativeImage } from 'electron'
 import type { StealthWindow } from '../window/StealthWindow'
 import type { SelectorWindow, SelectionRegion } from '../window/SelectorWindow'
 
@@ -17,26 +18,41 @@ export class ScreenCapture {
     this.selectorWindow = selectorWindow
   }
 
-  /** 完整截屏流程：隐藏窗口 → 选区 → 截图 → 恢复窗口 */
+  /** 完整截屏流程：隐藏窗口 → 截全屏 → 选区 → 裁剪 → 恢复窗口 */
   async captureRegion(): Promise<CaptureResult | null> {
     // 隐藏隐身窗口避免截到自身
     this.stealthWindow.hide()
 
     try {
-      // 打开选区窗口等待用户选择
-      const region = await this.selectorWindow.selectRegion()
+      // 先截取全屏图像
+      const fullImage = await this.captureFullScreen()
+      const screenshotDataURL = fullImage.toDataURL()
+
+      // 打开选区窗口，把截图当背景
+      const region = await this.selectorWindow.selectRegion(screenshotDataURL)
       if (!region) return null
 
-      // 截取选中区域
-      return await this.captureScreen(region)
+      // 从已截取的全屏图像中裁剪选区
+      const scaleFactor = screen.getPrimaryDisplay().scaleFactor
+      const cropped = fullImage.crop({
+        x: Math.round(region.x * scaleFactor),
+        y: Math.round(region.y * scaleFactor),
+        width: Math.round(region.width * scaleFactor),
+        height: Math.round(region.height * scaleFactor),
+      })
+
+      const pngBuffer = cropped.toPNG()
+      const base64 = pngBuffer.toString('base64')
+
+      return { image: pngBuffer, imageBase64: base64, region }
     } finally {
       // 恢复隐身窗口
       this.stealthWindow.show()
     }
   }
 
-  /** 截取指定区域 */
-  async captureScreen(region: SelectionRegion): Promise<CaptureResult> {
+  /** 截取全屏 */
+  private async captureFullScreen(): Promise<NativeImage> {
     const display = screen.getPrimaryDisplay()
     const scaleFactor = display.scaleFactor
 
@@ -53,23 +69,6 @@ export class ScreenCapture {
       throw new Error('No screen source available')
     }
 
-    const fullImage = primarySource.thumbnail
-
-    // 按 scaleFactor 换算裁剪区域
-    const cropped = fullImage.crop({
-      x: Math.round(region.x * scaleFactor),
-      y: Math.round(region.y * scaleFactor),
-      width: Math.round(region.width * scaleFactor),
-      height: Math.round(region.height * scaleFactor),
-    })
-
-    const pngBuffer = cropped.toPNG()
-    const base64 = pngBuffer.toString('base64')
-
-    return {
-      image: pngBuffer,
-      imageBase64: base64,
-      region,
-    }
+    return primarySource.thumbnail
   }
 }
