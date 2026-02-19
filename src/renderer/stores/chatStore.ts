@@ -1,4 +1,7 @@
 import { create } from 'zustand'
+import { getLogger } from '../utils/logger'
+
+const log = getLogger('chatStore')
 
 export interface ChatMessage {
   id: string
@@ -12,6 +15,7 @@ export interface ChatMessage {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const api = (window as any).api as {
   llmChat: (messages: { role: string; content: string }[]) => Promise<{ success: boolean; error?: string }>
+  llmAnalyzeScreenshot: (imageBase64: string, prompt?: string) => Promise<{ success: boolean; error?: string }>
   onLLMStreamChunk: (cb: (chunk: string) => void) => () => void
   onLLMStreamEnd: (cb: () => void) => () => void
   onLLMStreamError: (cb: (error: string) => void) => () => void
@@ -25,6 +29,7 @@ interface ChatState {
 
   addUserMessage: (content: string, screenshotPath?: string) => void
   sendMessage: (content: string) => Promise<void>
+  sendScreenshot: (imageBase64: string, prompt?: string) => Promise<void>
   startStream: () => void
   appendStreamChunk: (chunk: string) => void
   endStream: () => void
@@ -77,7 +82,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       cleanup()
     })
     const offError = api.onLLMStreamError((error) => {
-      console.error('[Chat] LLM stream error:', error)
+      log.error('LLM 流式错误', error)
       endStream()
       cleanup()
     })
@@ -91,12 +96,52 @@ export const useChatStore = create<ChatState>((set, get) => ({
     try {
       const result = await api.llmChat(chatMessages)
       if (!result.success) {
-        console.error('[Chat] LLM chat failed:', result.error)
+        log.error('LLM 聊天失败', result.error)
         endStream()
         cleanup()
       }
     } catch (err) {
-      console.error('[Chat] LLM chat error:', err)
+      log.error('LLM 聊天异常', err)
+      endStream()
+      cleanup()
+    }
+  },
+
+  sendScreenshot: async (imageBase64, prompt) => {
+    if (!api) return
+    const { addUserMessage, startStream, appendStreamChunk, endStream } = get()
+
+    // 用 data URI 作为截屏缩略图路径
+    const screenshotDataURI = `data:image/png;base64,${imageBase64}`
+    addUserMessage(prompt || '请分析这张截图', screenshotDataURI)
+    startStream()
+
+    const offChunk = api.onLLMStreamChunk((chunk) => appendStreamChunk(chunk))
+    const offEnd = api.onLLMStreamEnd(() => {
+      endStream()
+      cleanup()
+    })
+    const offError = api.onLLMStreamError((error) => {
+      console.error('[Chat] LLM screenshot analysis error:', error)
+      endStream()
+      cleanup()
+    })
+
+    function cleanup() {
+      offChunk()
+      offEnd()
+      offError()
+    }
+
+    try {
+      const result = await api.llmAnalyzeScreenshot(imageBase64, prompt)
+      if (!result.success) {
+        log.error('LLM 截屏分析失败', result.error)
+        endStream()
+        cleanup()
+      }
+    } catch (err) {
+      log.error('LLM 截屏分析异常', err)
       endStream()
       cleanup()
     }

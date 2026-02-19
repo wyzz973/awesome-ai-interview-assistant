@@ -7,6 +7,9 @@ import type {
 } from '@shared/types'
 import type { LLMProvider } from '@shared/types'
 import type { HotkeyConfig, HotkeyAction } from '@shared/types'
+import { getLogger } from '../utils/logger'
+
+const log = getLogger('settingsStore')
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const api = (window as any).api as {
@@ -43,7 +46,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
   loadConfig: async () => {
     if (!api) {
-      console.warn('[settingsStore] IPC not available')
+      log.warn('IPC 不可用')
       return
     }
     set({ loading: true })
