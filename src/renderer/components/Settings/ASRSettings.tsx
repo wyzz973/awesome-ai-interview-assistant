@@ -32,7 +32,7 @@ export default function ASRSettings() {
           className="h-9 px-3 text-sm rounded-lg bg-bg-tertiary text-text-primary border border-border-default focus:outline-none focus:border-border-focus"
         >
           {ASR_PROVIDERS.map((p) => (
-            <option key={p.id} value={p.id}>{p.label}</option>
+            <option key={p.id} value={p.id} disabled={p.id === 'google'}>{p.label}{p.id === 'google' ? '（即将支持）' : ''}</option>
           ))}
         </select>
       </div>
@@ -59,7 +59,7 @@ export default function ASRSettings() {
             label="Base URL"
             value={asr.whisper?.baseURL ?? ''}
             onChange={(e) =>
-              updateASR({ whisper: { ...asr.whisper!, baseURL: e.target.value } })
+              updateASR({ whisper: { ...(asr.whisper ?? { baseURL: '', apiKey: '' }), baseURL: e.target.value } })
             }
             placeholder="https://api.openai.com"
           />
@@ -68,7 +68,7 @@ export default function ASRSettings() {
             type="password"
             value={asr.whisper?.apiKey ?? ''}
             onChange={(e) =>
-              updateASR({ whisper: { ...asr.whisper!, apiKey: e.target.value } })
+              updateASR({ whisper: { ...(asr.whisper ?? { baseURL: '', apiKey: '' }), apiKey: e.target.value } })
             }
             placeholder="sk-..."
           />

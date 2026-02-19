@@ -66,14 +66,14 @@ export default function ASRSetupStep({ asr, onChange }: ASRSetupStepProps) {
             <Input
               label="Whisper Base URL"
               value={asr.whisper?.baseURL ?? ''}
-              onChange={(e) => update({ whisper: { ...asr.whisper!, baseURL: e.target.value } })}
+              onChange={(e) => update({ whisper: { ...(asr.whisper ?? { baseURL: '', apiKey: '' }), baseURL: e.target.value } })}
               placeholder="https://api.openai.com"
             />
             <Input
               label="API Key"
               type="password"
               value={asr.whisper?.apiKey ?? ''}
-              onChange={(e) => update({ whisper: { ...asr.whisper!, apiKey: e.target.value } })}
+              onChange={(e) => update({ whisper: { ...(asr.whisper ?? { baseURL: '', apiKey: '' }), apiKey: e.target.value } })}
               placeholder="sk-..."
             />
           </div>
