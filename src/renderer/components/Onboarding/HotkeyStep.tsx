@@ -2,10 +2,12 @@ import { useState, useCallback } from 'react'
 import { Keyboard } from 'lucide-react'
 import { DEFAULT_HOTKEYS } from '@shared/constants'
 import type { HotkeyAction, HotkeyConfig } from '@shared/types'
+import { formatHotkey } from '../../utils/formatHotkey'
 
 const HOTKEY_LABELS: Record<HotkeyAction, string> = {
   screenshot: '截屏',
   toggleWindow: '切换窗口',
+  toggleStealth: '隐身模式',
   decreaseOpacity: '降低透明度',
   increaseOpacity: '提高透明度',
   toggleRecording: '开始/停止录音',
@@ -73,7 +75,7 @@ export default function HotkeyStep({ hotkeys, onChange }: HotkeyStepProps) {
                 }
               `}
             >
-              {recordingAction === action ? '按下快捷键...' : hotkeys[action]}
+              {recordingAction === action ? '按下快捷键...' : formatHotkey(hotkeys[action])}
             </button>
           </div>
         ))}
