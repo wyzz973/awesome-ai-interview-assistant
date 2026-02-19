@@ -34,10 +34,18 @@ export class LLMService {
     historyMessages?: ChatMessage[]
   ): Promise<AsyncIterable<string>> {
     log.info('开始截屏分析')
+
+    // 根据供应商决定 image_url 格式
+    // GLM (智谱清言): 需要纯 base64 字符串
+    // OpenAI / Qwen / Moonshot / MiniMax 等: 需要 data URI 格式
+    const imageUrl = this.isGLMProvider()
+      ? imageBase64
+      : `data:image/png;base64,${imageBase64}`
+
     const userContent = [
       {
         type: 'image_url' as const,
-        image_url: { url: `data:image/png;base64,${imageBase64}` }
+        image_url: { url: imageUrl }
       },
       { type: 'text' as const, text: prompt || '请分析这张图片' }
     ]
@@ -151,6 +159,11 @@ export class LLMService {
         error: err instanceof Error ? err.message : String(err),
       }
     }
+  }
+
+  /** 检测当前配置是否为 GLM (智谱清言) 供应商 */
+  private isGLMProvider(): boolean {
+    return this.config.id === 'glm' || this.config.baseURL.includes('bigmodel.cn')
   }
 
   /** 内部：构建请求并处理 SSE 流 */
