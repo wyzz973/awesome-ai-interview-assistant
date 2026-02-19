@@ -11,10 +11,8 @@ export default function StorageSettings() {
 
   const handleExport = async () => {
     try {
-      if (window.electron?.ipcRenderer) {
-        await window.electron.ipcRenderer.invoke('config:export')
-        toast.success('配置已导出')
-      }
+      await window.api.configExport()
+      toast.success('配置已导出')
     } catch {
       toast.error('导出失败')
     }

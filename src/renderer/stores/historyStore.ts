@@ -29,13 +29,14 @@ interface HistoryState {
   clearDetail: () => void
 }
 
-function ipcInvoke(channel: string, ...args: unknown[]): Promise<unknown> {
-  if (window.electron?.ipcRenderer) {
-    return window.electron.ipcRenderer.invoke(channel, ...args)
-  }
-  console.warn(`[historyStore] IPC not available: ${channel}`, args)
-  return Promise.resolve(null)
-}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const api = (window as any).api as {
+  sessionList: (options?: unknown) => Promise<unknown>
+  sessionGet: (id: string) => Promise<unknown>
+  sessionDelete: (id: string) => Promise<unknown>
+  sessionExport: (id: string, format: string) => Promise<unknown>
+  reviewGenerate: (sessionId: string) => Promise<unknown>
+} | undefined
 
 export const useHistoryStore = create<HistoryState>((set, get) => ({
   sessions: [],
@@ -47,9 +48,10 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
   loading: false,
 
   loadSessions: async () => {
+    if (!api) return
     set({ loading: true })
     try {
-      const sessions = (await ipcInvoke('session:list')) as Session[] | null
+      const sessions = (await api.sessionList()) as Session[] | null
       set({ sessions: sessions ?? [] })
     } finally {
       set({ loading: false })
@@ -57,9 +59,10 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
   },
 
   loadSessionDetail: async (sessionId) => {
+    if (!api) return
     set({ loading: true })
     try {
-      const session = (await ipcInvoke('session:get', sessionId)) as
+      const session = (await api.sessionGet(sessionId)) as
         | { session: Session; transcripts: TranscriptEntry[]; screenshotQAs: ScreenshotQA[]; review: ReviewReport | null }
         | null
       if (session) {
@@ -80,7 +83,8 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
   },
 
   deleteSession: async (sessionId) => {
-    await ipcInvoke('session:delete', sessionId)
+    if (!api) return
+    await api.sessionDelete(sessionId)
     set((state) => ({
       sessions: state.sessions.filter((s) => s.id !== sessionId),
       currentSession: state.currentSession?.id === sessionId ? null : state.currentSession,
@@ -88,13 +92,15 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
   },
 
   exportSession: async (sessionId, format) => {
-    await ipcInvoke('session:export', sessionId, format)
+    if (!api) return
+    await api.sessionExport(sessionId, format)
   },
 
   generateReview: async (sessionId) => {
+    if (!api) return
     set({ loading: true })
     try {
-      const review = (await ipcInvoke('review:generate', sessionId)) as ReviewReport | null
+      const review = (await api.reviewGenerate(sessionId)) as ReviewReport | null
       if (review) {
         set({ review })
       }
