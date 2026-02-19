@@ -73,7 +73,7 @@ export class LLMService {
   /** 测试连接 */
   async testConnection(): Promise<{ success: boolean; error?: string }> {
     try {
-      const url = `${this.config.baseURL}/v1/chat/completions`
+      const url = `${this.config.baseURL.replace(/\/+$/, '')}/chat/completions`
       const response = await fetch(url, {
         method: 'POST',
         headers: {
@@ -104,7 +104,7 @@ export class LLMService {
 
   /** 内部：构建请求并处理 SSE 流 */
   private async *streamRequest(body: object): AsyncGenerator<string> {
-    const url = `${this.config.baseURL}/v1/chat/completions`
+    const url = `${this.config.baseURL.replace(/\/+$/, '')}/chat/completions`
     const response = await fetch(url, {
       method: 'POST',
       headers: {

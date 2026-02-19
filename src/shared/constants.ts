@@ -12,61 +12,63 @@ export const DEFAULT_HOTKEYS: HotkeyConfig = {
   sendMessage: 'CommandOrControl+Enter',
 }
 
-/** LLM 供应商预设 */
+/** LLM 供应商预设
+ *  baseURL 统一包含版本路径，LLMService 只拼接 /chat/completions
+ */
 export const LLM_PROVIDER_PRESETS: LLMProviderPreset[] = [
   {
     id: 'openai',
     name: 'OpenAI',
-    baseURL: 'https://api.openai.com',
+    baseURL: 'https://api.openai.com/v1',
     defaultModel: 'gpt-4.1',
-    models: ['gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano', 'gpt-4o', 'gpt-4o-mini', 'o3', 'o3-mini', 'o4-mini'],
-  },
-  {
-    id: 'claude',
-    name: 'Claude (Anthropic)',
-    baseURL: 'https://api.anthropic.com',
-    defaultModel: 'claude-sonnet-4-6',
-    models: [
-      'claude-opus-4-6',
-      'claude-sonnet-4-6',
-      'claude-haiku-4-5-20251001',
-      'claude-sonnet-4-5-20250929',
-    ],
+    models: ['gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano', 'gpt-4o', 'gpt-4o-mini', 'o3-mini'],
   },
   {
     id: 'deepseek',
     name: 'DeepSeek',
-    baseURL: 'https://api.deepseek.com',
+    baseURL: 'https://api.deepseek.com/v1',
     defaultModel: 'deepseek-chat',
     models: ['deepseek-chat', 'deepseek-reasoner'],
-  },
-  {
-    id: 'qwen',
-    name: 'Qwen (通义千问)',
-    baseURL: 'https://dashscope.aliyuncs.com/compatible-mode',
-    defaultModel: 'qwen-max',
-    models: ['qwen-max', 'qwen-plus', 'qwen-turbo', 'qwen-vl-max', 'qwen-vl-plus'],
   },
   {
     id: 'glm',
     name: 'GLM (智谱清言)',
     baseURL: 'https://open.bigmodel.cn/api/paas/v4',
-    defaultModel: 'glm-4.7',
-    models: ['glm-5', 'glm-4.7', 'glm-4.7-FlashX', 'glm-4-plus'],
+    defaultModel: 'glm-4-plus',
+    models: ['glm-4-plus', 'glm-4v-plus', 'glm-4-flash', 'glm-4-air', 'glm-4.7', 'glm-4.7-flash'],
+  },
+  {
+    id: 'qwen',
+    name: 'Qwen (通义千问)',
+    baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    defaultModel: 'qwen-max',
+    models: ['qwen-max', 'qwen-plus', 'qwen-turbo', 'qwen3-max', 'qwen3.5-plus'],
   },
   {
     id: 'moonshot',
     name: 'Kimi (月之暗面)',
-    baseURL: 'https://api.moonshot.cn/v1',
+    baseURL: 'https://api.moonshot.ai/v1',
     defaultModel: 'kimi-k2.5',
-    models: ['kimi-k2.5', 'kimi-k2-instruct', 'moonshot-v1-128k', 'moonshot-v1-32k', 'moonshot-v1-8k'],
+    models: ['kimi-k2.5', 'kimi-k2-0711-preview', 'moonshot-v1-128k', 'moonshot-v1-32k', 'moonshot-v1-8k'],
   },
   {
     id: 'minimax',
     name: 'MiniMax',
-    baseURL: 'https://api.minimax.chat/v1',
-    defaultModel: 'MiniMax-M2.5',
-    models: ['MiniMax-M2.5', 'MiniMax-M2.1', 'MiniMax-M1'],
+    baseURL: 'https://api.minimax.io/v1',
+    defaultModel: 'MiniMax-M2.1',
+    models: ['MiniMax-M2.1', 'MiniMax-M1', 'MiniMax-Text-01', 'abab6.5s-chat'],
+  },
+  {
+    id: 'claude',
+    name: 'Claude (Anthropic)',
+    baseURL: 'https://api.anthropic.com/v1',
+    defaultModel: 'claude-sonnet-4-6-20250217',
+    models: [
+      'claude-opus-4-6-20250205',
+      'claude-sonnet-4-6-20250217',
+      'claude-sonnet-4-5-20250929',
+      'claude-haiku-4-5-20251001',
+    ],
   },
 ]
 
