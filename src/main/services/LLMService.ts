@@ -1,4 +1,7 @@
 import type { LLMProvider, ChatMessage } from '@shared/types/llm'
+import { getLogger } from '../logger'
+
+const log = getLogger('LLMService')
 
 export class LLMService {
   private config: LLMProvider
@@ -8,11 +11,13 @@ export class LLMService {
   }
 
   updateConfig(config: Partial<LLMProvider>): void {
+    log.info('LLM 配置更新')
     this.config = { ...this.config, ...config }
   }
 
   /** 流式文本聊天 */
   async chat(messages: ChatMessage[]): Promise<AsyncIterable<string>> {
+    log.info('开始 LLM 聊天')
     return this.streamRequest({
       model: this.config.model,
       messages,
@@ -28,6 +33,7 @@ export class LLMService {
     prompt?: string,
     historyMessages?: ChatMessage[]
   ): Promise<AsyncIterable<string>> {
+    log.info('开始截屏分析')
     const userContent = [
       {
         type: 'image_url' as const,
@@ -52,6 +58,7 @@ export class LLMService {
 
   /** 生成复盘报告 */
   async generateReview(sessionData: string): Promise<AsyncIterable<string>> {
+    log.info('开始生成复盘报告')
     const messages: ChatMessage[] = [
       {
         role: 'system',
@@ -72,6 +79,7 @@ export class LLMService {
 
   /** 测试连接（可传入临时配置，用于 Onboarding/Settings 中测试用户表单值） */
   async testConnection(override?: { baseURL: string; apiKey: string; model: string }): Promise<{ success: boolean; error?: string }> {
+    log.info('测试 LLM 连接')
     try {
       const baseURL = override?.baseURL ?? this.config.baseURL
       const apiKey = override?.apiKey ?? this.config.apiKey
@@ -108,6 +116,7 @@ export class LLMService {
 
   /** 从供应商 API 动态获取可用模型列表 */
   async fetchModels(baseURL: string, apiKey: string): Promise<{ models: string[]; error?: string }> {
+    log.debug('获取模型列表')
     try {
       const base = baseURL.replace(/\/+$/, '')
       const url = `${base}/models`
@@ -158,6 +167,7 @@ export class LLMService {
 
     if (!response.ok) {
       const text = await response.text()
+      log.error('LLM API 请求失败', { status: response.status })
       throw new Error(`LLM API error: HTTP ${response.status}: ${text}`)
     }
 

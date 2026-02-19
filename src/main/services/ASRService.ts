@@ -1,4 +1,7 @@
 import type { ASRProvider, ASRTranscript } from './ASRProviders/ASRProvider'
+import { getLogger } from '../logger'
+
+const log = getLogger('ASRService')
 
 /** 带说话人标识的转写结果 */
 export interface SpeakerTranscript {
@@ -23,11 +26,13 @@ export class ASRService {
 
   /** 设置系统音频通道的 ASR Provider（interviewer） */
   setSystemProvider(provider: ASRProvider): void {
+    log.debug('设置系统音频 ASR Provider', { name: provider.name })
     this.systemProvider = provider
   }
 
   /** 设置麦克风通道的 ASR Provider（me） */
   setMicProvider(provider: ASRProvider): void {
+    log.debug('设置麦克风 ASR Provider', { name: provider.name })
     this.micProvider = provider
   }
 
@@ -42,6 +47,7 @@ export class ASRService {
       throw new Error('Both system and mic ASR providers must be set before starting')
     }
 
+    log.info('开始 ASR 双通道识别', { sampleRate, language })
     this.running = true
 
     this.systemProvider.onTranscript((transcript: ASRTranscript) => {
@@ -86,6 +92,7 @@ export class ASRService {
 
   /** 停止双通道识别 */
   async stopStream(): Promise<void> {
+    log.info('停止 ASR 识别')
     this.running = false
 
     const stops: Promise<void>[] = []
@@ -100,6 +107,7 @@ export class ASRService {
     system: { success: boolean; error?: string }
     mic: { success: boolean; error?: string }
   }> {
+    log.info('测试 ASR 连接')
     const [system, mic] = await Promise.all([
       this.systemProvider
         ? this.systemProvider.testConnection()
