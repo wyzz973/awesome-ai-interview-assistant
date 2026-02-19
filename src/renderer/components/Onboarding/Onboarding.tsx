@@ -49,10 +49,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     }
 
     // 标记引导完成
-    if (window.electron?.ipcRenderer) {
-      const updated = { ...config!, onboardingCompleted: true }
-      await window.electron.ipcRenderer.invoke('config:set', updated)
-    }
+    await window.api.configSet('onboardingCompleted', true)
 
     onComplete()
   }
