@@ -29,7 +29,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
         {message.screenshotPath && (
           <div className="rounded-lg overflow-hidden border border-border-default max-w-[240px]">
             <img
-              src={`file://${message.screenshotPath}`}
+              src={message.screenshotPath.startsWith('data:') ? message.screenshotPath : `file://${message.screenshotPath}`}
               alt="截屏"
               className="w-full h-auto object-cover"
             />

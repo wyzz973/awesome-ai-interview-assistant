@@ -23,7 +23,7 @@ export default function TranscriptPanel() {
     clear,
   } = useTranscriptStore()
 
-  const { addUserMessage } = useChatStore()
+  const { sendMessage } = useChatStore()
   const listEndRef = useRef<HTMLDivElement>(null)
   const [duration, setDuration] = useState('00:00')
 
@@ -49,7 +49,7 @@ export default function TranscriptPanel() {
   const handleSendToAI = () => {
     const text = getSelectedText()
     if (text) {
-      addUserMessage(text)
+      sendMessage(text)
     }
   }
 

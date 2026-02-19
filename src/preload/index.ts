@@ -109,6 +109,38 @@ const api = {
   audioListDevices: () => ipcRenderer.invoke(IPC_CHANNELS.AUDIO_LIST_DEVICES),
   audioCheckBlackhole: () => ipcRenderer.invoke(IPC_CHANNELS.AUDIO_CHECK_BLACKHOLE),
   audioInstallBlackhole: () => ipcRenderer.invoke(IPC_CHANNELS.AUDIO_INSTALL_BLACKHOLE),
+
+  // ── 主进程 → 渲染器 事件监听 ──
+  onScreenshotCaptured: (callback: (data: { imageBase64: string; region?: unknown }) => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, data: { imageBase64: string; region?: unknown }) => callback(data)
+    ipcRenderer.on('screenshot:captured', handler)
+    return () => ipcRenderer.removeListener('screenshot:captured', handler)
+  },
+  onRecordingStarted: (callback: (data: { sessionId: string }) => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, data: { sessionId: string }) => callback(data)
+    ipcRenderer.on('recording:started', handler)
+    return () => ipcRenderer.removeListener('recording:started', handler)
+  },
+  onRecordingStopped: (callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on('recording:stopped', handler)
+    return () => ipcRenderer.removeListener('recording:stopped', handler)
+  },
+  onRecordingError: (callback: (data: { message: string }) => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, data: { message: string }) => callback(data)
+    ipcRenderer.on('recording:error', handler)
+    return () => ipcRenderer.removeListener('recording:error', handler)
+  },
+  onNavigate: (callback: (route: string) => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, route: string) => callback(route)
+    ipcRenderer.on('navigate', handler)
+    return () => ipcRenderer.removeListener('navigate', handler)
+  },
+  onHotkeySendMessage: (callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on('hotkey:sendMessage', handler)
+    return () => ipcRenderer.removeListener('hotkey:sendMessage', handler)
+  },
 }
 
 contextBridge.exposeInMainWorld('api', api)
