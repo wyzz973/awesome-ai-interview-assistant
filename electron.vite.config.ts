@@ -4,7 +4,18 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    plugins: [
+      externalizeDepsPlugin({
+        exclude: [
+          'electron-store',
+          'conf',
+          'atomically',
+          'json-schema-typed',
+          'debounce-fn',
+          'env-paths'
+        ]
+      })
+    ],
     resolve: {
       alias: {
         '@shared': resolve('src/shared'),
