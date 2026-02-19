@@ -51,8 +51,8 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
     if (!api) return
     set({ loading: true })
     try {
-      const sessions = (await api.sessionList()) as Session[] | null
-      set({ sessions: sessions ?? [] })
+      const result = (await api.sessionList()) as { sessions: Session[]; total: number } | null
+      set({ sessions: result?.sessions ?? [] })
     } finally {
       set({ loading: false })
     }
