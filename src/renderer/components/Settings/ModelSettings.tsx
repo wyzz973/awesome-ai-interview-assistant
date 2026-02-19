@@ -129,8 +129,8 @@ function ProviderEditor({
           <button
             type="button"
             onClick={fetchModels}
-            disabled={fetchingModels || !form.apiKey}
-            className="text-xs text-accent-primary hover:text-accent-primary/80 disabled:text-text-muted flex items-center gap-1"
+            disabled={fetchingModels}
+            className="text-xs text-accent-primary hover:text-accent-primary/80 disabled:opacity-50 flex items-center gap-1"
           >
             <RefreshCw size={10} className={fetchingModels ? 'animate-spin' : ''} />
             {fetchingModels ? '获取中' : '从 API 获取'}

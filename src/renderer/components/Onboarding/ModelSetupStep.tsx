@@ -54,7 +54,14 @@ export default function ModelSetupStep({ onProviderChange, initialProvider }: Mo
   }
 
   const fetchModels = useCallback(async () => {
-    if (!form.baseURL || !form.apiKey) return
+    if (!form.apiKey) {
+      toast.info('请先填写 API Key')
+      return
+    }
+    if (!form.baseURL) {
+      toast.info('请先填写 Base URL')
+      return
+    }
     setFetchingModels(true)
     try {
       const result = await window.api.llmFetchModels(form.baseURL, form.apiKey)
@@ -142,8 +149,8 @@ export default function ModelSetupStep({ onProviderChange, initialProvider }: Mo
               <button
                 type="button"
                 onClick={fetchModels}
-                disabled={fetchingModels || !form.apiKey}
-                className="text-xs text-accent-primary hover:text-accent-primary/80 disabled:text-text-muted flex items-center gap-1"
+                disabled={fetchingModels}
+                className="text-xs text-accent-primary hover:text-accent-primary/80 disabled:opacity-50 flex items-center gap-1"
               >
                 <RefreshCw size={10} className={fetchingModels ? 'animate-spin' : ''} />
                 {fetchingModels ? '获取中' : '刷新列表'}
