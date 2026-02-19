@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
+import { RefreshCw } from 'lucide-react'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { Button, Input } from '../Common'
 import { toast } from '../Common'
@@ -24,8 +25,15 @@ function ProviderEditor({
 }) {
   const [form, setForm] = useState<LLMProvider>(provider)
   const [testing, setTesting] = useState(false)
+  const [fetchingModels, setFetchingModels] = useState(false)
+  const [remoteModels, setRemoteModels] = useState<string[]>([])
 
   const selectedPreset = LLM_PROVIDER_PRESETS.find((p) => p.id === form.id)
+
+  // 可用模型列表：远程获取 > 预设默认
+  const availableModels = remoteModels.length > 0
+    ? remoteModels
+    : selectedPreset?.models ?? []
 
   const handlePresetChange = (presetId: string) => {
     const preset = LLM_PROVIDER_PRESETS.find((p) => p.id === presetId)
@@ -37,8 +45,30 @@ function ProviderEditor({
         baseURL: preset.baseURL,
         model: preset.defaultModel,
       })
+      setRemoteModels([])
     }
   }
+
+  const fetchModels = useCallback(async () => {
+    if (!form.baseURL || !form.apiKey) {
+      toast.info('请先填写 Base URL 和 API Key')
+      return
+    }
+    setFetchingModels(true)
+    try {
+      const result = await window.api.llmFetchModels(form.baseURL, form.apiKey)
+      if (result.models.length > 0) {
+        setRemoteModels(result.models)
+        toast.success(`获取到 ${result.models.length} 个模型`)
+      } else {
+        toast.info(result.error ?? '未获取到模型，使用预设列表')
+      }
+    } catch {
+      toast.error('获取模型列表失败')
+    } finally {
+      setFetchingModels(false)
+    }
+  }, [form.baseURL, form.apiKey])
 
   const handleTest = async () => {
     setTesting(true)
@@ -81,7 +111,7 @@ function ProviderEditor({
         label="Base URL"
         value={form.baseURL}
         onChange={(e) => setForm({ ...form, baseURL: e.target.value })}
-        placeholder="https://api.openai.com"
+        placeholder="https://api.openai.com/v1"
       />
 
       <Input
@@ -94,14 +124,26 @@ function ProviderEditor({
 
       {/* 模型选择 */}
       <div className="flex flex-col gap-1.5">
-        <label className="text-xs text-text-muted">模型</label>
-        {selectedPreset ? (
+        <div className="flex items-center justify-between">
+          <label className="text-xs text-text-muted">模型</label>
+          <button
+            type="button"
+            onClick={fetchModels}
+            disabled={fetchingModels || !form.apiKey}
+            className="text-xs text-accent-primary hover:text-accent-primary/80 disabled:text-text-muted flex items-center gap-1"
+          >
+            <RefreshCw size={10} className={fetchingModels ? 'animate-spin' : ''} />
+            {fetchingModels ? '获取中' : '从 API 获取'}
+          </button>
+        </div>
+
+        {availableModels.length > 0 ? (
           <select
             value={form.model}
             onChange={(e) => setForm({ ...form, model: e.target.value })}
             className="h-9 px-3 text-sm rounded-lg bg-bg-tertiary text-text-primary border border-border-default focus:outline-none focus:border-border-focus"
           >
-            {selectedPreset.models.map((m) => (
+            {availableModels.map((m) => (
               <option key={m} value={m}>{m}</option>
             ))}
           </select>
@@ -109,8 +151,14 @@ function ProviderEditor({
           <Input
             value={form.model}
             onChange={(e) => setForm({ ...form, model: e.target.value })}
-            placeholder="gpt-4o"
+            placeholder="输入模型 ID，如 gpt-4o"
           />
+        )}
+
+        {remoteModels.length > 0 && (
+          <span className="text-xs text-text-muted">
+            已从 API 获取 {remoteModels.length} 个可用模型
+          </span>
         )}
       </div>
 

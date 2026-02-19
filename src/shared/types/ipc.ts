@@ -15,6 +15,7 @@ export const IPC_CHANNELS = {
   LLM_STREAM_END: 'llm:streamEnd',
   LLM_STREAM_ERROR: 'llm:streamError',
   LLM_TEST_CONNECTION: 'llm:testConnection',
+  LLM_FETCH_MODELS: 'llm:fetchModels',
 
   // 语音识别
   ASR_START: 'asr:start',
@@ -54,6 +55,7 @@ export const IPC_CHANNELS = {
   // 音频设备
   AUDIO_LIST_DEVICES: 'audio:listDevices',
   AUDIO_CHECK_BLACKHOLE: 'audio:checkBlackhole',
+  AUDIO_INSTALL_BLACKHOLE: 'audio:installBlackhole',
 } as const
 
 /** IPC 通道名称类型 */

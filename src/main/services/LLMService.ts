@@ -102,6 +102,44 @@ export class LLMService {
     }
   }
 
+  /** 从供应商 API 动态获取可用模型列表 */
+  async fetchModels(baseURL: string, apiKey: string): Promise<{ models: string[]; error?: string }> {
+    try {
+      const base = baseURL.replace(/\/+$/, '')
+      const url = `${base}/models`
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+        signal: AbortSignal.timeout(8000),
+      })
+
+      if (!response.ok) {
+        return { models: [], error: `HTTP ${response.status}` }
+      }
+
+      const json = await response.json()
+      // OpenAI 兼容格式: { data: [{ id: "model-id" }, ...] }
+      const data = json.data ?? json
+      if (!Array.isArray(data)) {
+        return { models: [], error: '响应格式不符合预期' }
+      }
+
+      const models = data
+        .map((m: { id?: string }) => m.id)
+        .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
+        .sort()
+
+      return { models }
+    } catch (err) {
+      return {
+        models: [],
+        error: err instanceof Error ? err.message : String(err),
+      }
+    }
+  }
+
   /** 内部：构建请求并处理 SSE 流 */
   private async *streamRequest(body: object): AsyncGenerator<string> {
     const url = `${this.config.baseURL.replace(/\/+$/, '')}/chat/completions`

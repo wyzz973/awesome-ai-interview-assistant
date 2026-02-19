@@ -140,6 +140,10 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
     return await llmService.testConnection()
   })
 
+  ipcMain.handle(IPC_CHANNELS.LLM_FETCH_MODELS, async (_e, baseURL: string, apiKey: string) => {
+    return await llmService.fetchModels(baseURL, apiKey)
+  })
+
   // ── ASR ──
   ipcMain.handle(IPC_CHANNELS.ASR_START, async (event) => {
     try {
@@ -460,6 +464,14 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
       return { available }
     } catch {
       return { available: false }
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.AUDIO_INSTALL_BLACKHOLE, async () => {
+    try {
+      return await audioCapture.installBlackHole()
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
     }
   })
 }

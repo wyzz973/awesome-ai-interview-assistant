@@ -37,6 +37,8 @@ const api = {
   llmAnalyzeScreenshot: (imageBase64: string, prompt?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.LLM_ANALYZE_SCREENSHOT, imageBase64, prompt),
   llmTestConnection: () => ipcRenderer.invoke(IPC_CHANNELS.LLM_TEST_CONNECTION),
+  llmFetchModels: (baseURL: string, apiKey: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.LLM_FETCH_MODELS, baseURL, apiKey),
 
   /** LLM 流式推送监听 */
   onLLMStreamChunk: (callback: (chunk: string) => void) => {
@@ -105,6 +107,7 @@ const api = {
   // ── Audio ──
   audioListDevices: () => ipcRenderer.invoke(IPC_CHANNELS.AUDIO_LIST_DEVICES),
   audioCheckBlackhole: () => ipcRenderer.invoke(IPC_CHANNELS.AUDIO_CHECK_BLACKHOLE),
+  audioInstallBlackhole: () => ipcRenderer.invoke(IPC_CHANNELS.AUDIO_INSTALL_BLACKHOLE),
 }
 
 contextBridge.exposeInMainWorld('api', api)
