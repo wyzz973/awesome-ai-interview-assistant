@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { getLogger } from '../utils/logger'
+import { toast } from '../components/Common'
 
 const log = getLogger('chatStore')
 
@@ -87,6 +88,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     })
     const offError = api.onLLMStreamError((error) => {
       log.error('LLM 流式错误', error)
+      toast.error(error || '请求失败，请检查模型配置')
       endStream()
       cleanup()
     })
@@ -101,11 +103,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const result = await api.llmChat(chatMessages)
       if (!result.success) {
         log.error('LLM 聊天失败', result.error)
+        toast.error(result.error || '发送失败，请检查模型配置')
         endStream()
         cleanup()
       }
     } catch (err) {
       log.error('LLM 聊天异常', err)
+      toast.error('发送失败，请检查模型配置')
       endStream()
       cleanup()
     }
@@ -115,6 +119,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (!api) return
     if (get().isStreaming) {
       log.warn('正在流式响应中，拒绝新截屏分析请求')
+      toast.info('AI 正在回复中，请稍后再发送截屏')
       return
     }
     const { addUserMessage, startStream, appendStreamChunk, endStream } = get()
@@ -131,6 +136,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     })
     const offError = api.onLLMStreamError((error) => {
       log.error('LLM 截屏分析流式错误', error)
+      toast.error(error || '截屏分析失败')
       endStream()
       cleanup()
     })
@@ -145,11 +151,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const result = await api.llmAnalyzeScreenshot(imageBase64, prompt)
       if (!result.success) {
         log.error('LLM 截屏分析失败', result.error)
+        toast.error(result.error || '截屏分析失败，请检查模型配置')
         endStream()
         cleanup()
       }
     } catch (err) {
       log.error('LLM 截屏分析异常', err)
+      toast.error('截屏分析失败，请检查模型配置')
       endStream()
       cleanup()
     }
