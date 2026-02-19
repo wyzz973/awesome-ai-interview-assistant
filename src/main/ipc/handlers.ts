@@ -136,8 +136,8 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.LLM_TEST_CONNECTION, async () => {
-    return await llmService.testConnection()
+  ipcMain.handle(IPC_CHANNELS.LLM_TEST_CONNECTION, async (_e, override?: { baseURL: string; apiKey: string; model: string }) => {
+    return await llmService.testConnection(override)
   })
 
   ipcMain.handle(IPC_CHANNELS.LLM_FETCH_MODELS, async (_e, baseURL: string, apiKey: string) => {

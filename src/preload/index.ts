@@ -36,7 +36,8 @@ const api = {
   llmChat: (messages: unknown[]) => ipcRenderer.invoke(IPC_CHANNELS.LLM_CHAT, messages),
   llmAnalyzeScreenshot: (imageBase64: string, prompt?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.LLM_ANALYZE_SCREENSHOT, imageBase64, prompt),
-  llmTestConnection: () => ipcRenderer.invoke(IPC_CHANNELS.LLM_TEST_CONNECTION),
+  llmTestConnection: (override?: { baseURL: string; apiKey: string; model: string }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.LLM_TEST_CONNECTION, override),
   llmFetchModels: (baseURL: string, apiKey: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.LLM_FETCH_MODELS, baseURL, apiKey),
 

@@ -70,18 +70,22 @@ export class LLMService {
     })
   }
 
-  /** 测试连接 */
-  async testConnection(): Promise<{ success: boolean; error?: string }> {
+  /** 测试连接（可传入临时配置，用于 Onboarding/Settings 中测试用户表单值） */
+  async testConnection(override?: { baseURL: string; apiKey: string; model: string }): Promise<{ success: boolean; error?: string }> {
     try {
-      const url = `${this.config.baseURL.replace(/\/+$/, '')}/chat/completions`
+      const baseURL = override?.baseURL ?? this.config.baseURL
+      const apiKey = override?.apiKey ?? this.config.apiKey
+      const model = override?.model ?? this.config.model
+
+      const url = `${baseURL.replace(/\/+$/, '')}/chat/completions`
       const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.config.apiKey}`
+          Authorization: `Bearer ${apiKey}`
         },
         body: JSON.stringify({
-          model: this.config.model,
+          model,
           messages: [{ role: 'user', content: 'hi' }],
           max_tokens: 1,
           stream: false

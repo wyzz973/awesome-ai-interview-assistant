@@ -89,7 +89,11 @@ export default function ModelSetupStep({ onProviderChange, initialProvider }: Mo
   const handleTest = async () => {
     setTesting(true)
     try {
-      const result = await window.api.llmTestConnection()
+      const result = await window.api.llmTestConnection({
+        baseURL: form.baseURL,
+        apiKey: form.apiKey,
+        model: form.model,
+      })
       if (result?.success === false) {
         toast.error(result.error ?? '连接失败，请检查配置')
       } else {
