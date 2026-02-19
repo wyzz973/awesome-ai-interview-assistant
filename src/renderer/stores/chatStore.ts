@@ -122,7 +122,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       cleanup()
     })
     const offError = api.onLLMStreamError((error) => {
-      console.error('[Chat] LLM screenshot analysis error:', error)
+      log.error('LLM 截屏分析流式错误', error)
       endStream()
       cleanup()
     })
