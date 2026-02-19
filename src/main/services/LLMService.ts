@@ -39,7 +39,7 @@ export class LLMService {
         type: 'image_url' as const,
         image_url: { url: `data:image/png;base64,${imageBase64}` }
       },
-      ...(prompt ? [{ type: 'text' as const, text: prompt }] : [])
+      { type: 'text' as const, text: prompt || '请分析这张图片' }
     ]
 
     const messages: ChatMessage[] = [
