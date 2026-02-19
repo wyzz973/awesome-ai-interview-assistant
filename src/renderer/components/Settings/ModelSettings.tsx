@@ -43,9 +43,13 @@ function ProviderEditor({
   const selectedPreset = LLM_PROVIDER_PRESETS.find((p) => p.id === form.id)
 
   // 可用模型列表：远程获取 > 预设默认
-  const availableModels = remoteModels.length > 0
+  const baseModels = remoteModels.length > 0
     ? remoteModels
     : selectedPreset?.models ?? []
+  // 确保当前已保存的模型始终出现在列表中（避免切换页面后 select 找不到值）
+  const availableModels = form.model && !baseModels.includes(form.model)
+    ? [form.model, ...baseModels]
+    : baseModels
 
   const handlePresetChange = (presetId: string) => {
     const preset = LLM_PROVIDER_PRESETS.find((p) => p.id === presetId)

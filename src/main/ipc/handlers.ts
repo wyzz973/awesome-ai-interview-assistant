@@ -85,6 +85,9 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
   // ── LLM ──
   ipcMain.handle(IPC_CHANNELS.LLM_CHAT, async (event, messages: ChatMessage[]) => {
     try {
+      // 每次调用前从 configManager 读取 chat 角色的最新配置
+      const llmConfig = configManager.get('llm') as { chat: import('@shared/types/llm').LLMProvider }
+      llmService.updateConfig(llmConfig.chat)
       const stream = await llmService.chat(messages)
       const sender = event.sender
 
@@ -114,6 +117,9 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
 
   ipcMain.handle(IPC_CHANNELS.LLM_ANALYZE_SCREENSHOT, async (event, imageBase64: string, prompt?: string) => {
     try {
+      // 每次调用前从 configManager 读取 screenshot 角色的最新配置
+      const llmConfig = configManager.get('llm') as { screenshot: import('@shared/types/llm').LLMProvider }
+      llmService.updateConfig(llmConfig.screenshot)
       const stream = await llmService.analyzeScreenshot(imageBase64, prompt)
       const sender = event.sender
 
@@ -354,6 +360,9 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
   // ── Review ──
   ipcMain.handle(IPC_CHANNELS.REVIEW_GENERATE, async (_e, sessionId: string) => {
     try {
+      // 使用 review 角色的最新配置
+      const llmConfig = configManager.get('llm') as { review: import('@shared/types/llm').LLMProvider }
+      llmService.updateConfig(llmConfig.review)
       const session = sessionRepo.getById(sessionId)
       if (!session) {
         return { success: false, error: 'Session not found' }
