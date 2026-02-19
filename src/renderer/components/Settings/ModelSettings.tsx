@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { Button, Input } from '../Common'
@@ -27,6 +27,18 @@ function ProviderEditor({
   const [testing, setTesting] = useState(false)
   const [fetchingModels, setFetchingModels] = useState(false)
   const [remoteModels, setRemoteModels] = useState<string[]>([])
+
+  // 当 provider prop 变化时（例如 loadConfig 重载），同步到表单状态
+  const prevProviderRef = useRef(provider)
+  if (
+    provider.id !== prevProviderRef.current.id ||
+    provider.model !== prevProviderRef.current.model ||
+    provider.baseURL !== prevProviderRef.current.baseURL ||
+    provider.apiKey !== prevProviderRef.current.apiKey
+  ) {
+    prevProviderRef.current = provider
+    setForm(provider)
+  }
 
   const selectedPreset = LLM_PROVIDER_PRESETS.find((p) => p.id === form.id)
 
@@ -180,6 +192,15 @@ export default function ModelSettings() {
   const { config, updateLLMProvider } = useSettingsStore()
   if (!config) return null
 
+  const handleSave = async (key: 'screenshot' | 'chat' | 'review', provider: LLMProvider) => {
+    try {
+      await updateLLMProvider(key, provider)
+      toast.success('保存成功')
+    } catch {
+      toast.error('保存失败')
+    }
+  }
+
   return (
     <div className="space-y-4">
       {LLM_ROLES.map(({ key, label }) => (
@@ -188,7 +209,7 @@ export default function ModelSettings() {
           roleKey={key}
           roleLabel={label}
           provider={config.llm[key]}
-          onSave={(p) => updateLLMProvider(key, p)}
+          onSave={(p) => handleSave(key, p)}
         />
       ))}
     </div>

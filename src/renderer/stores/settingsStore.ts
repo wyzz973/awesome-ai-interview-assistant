@@ -49,14 +49,20 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       log.warn('IPC 不可用')
       return
     }
-    set({ loading: true })
+    // 首次加载时显示 loading，后续刷新在后台静默更新避免闪烁
+    const isFirstLoad = !get().config
+    if (isFirstLoad) {
+      set({ loading: true })
+    }
     try {
       const config = await api.configExport() as AppConfig | null
       if (config) {
         set({ config })
       }
     } finally {
-      set({ loading: false })
+      if (isFirstLoad) {
+        set({ loading: false })
+      }
     }
   },
 
