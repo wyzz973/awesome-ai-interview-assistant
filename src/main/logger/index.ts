@@ -10,6 +10,15 @@ let initialized = false
 export function initializeLogger(): void {
   if (initialized) return
 
+  // 忽略 stdout/stderr 管道断裂错误（EPIPE），
+  // 当启动 Electron 的终端关闭时 electron-log console transport 会触发
+  process.stdout?.on?.('error', (err: NodeJS.ErrnoException) => {
+    if (err.code !== 'EPIPE') throw err
+  })
+  process.stderr?.on?.('error', (err: NodeJS.ErrnoException) => {
+    if (err.code !== 'EPIPE') throw err
+  })
+
   const isDev = !app.isPackaged
 
   // 文件 transport 配置
