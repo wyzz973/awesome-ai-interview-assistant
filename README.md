@@ -67,37 +67,97 @@ src/
   shared/                   # 跨进程类型与常量
 ```
 
+## 平台支持
+
+| 平台 | 开发运行 | 打包 | 说明 |
+|---|---|---|---|
+| macOS | ✅ | ✅ | 当前主目标平台，音频工作流最完整 |
+| Windows | ✅ | ✅ | 可运行/可打包，系统音频双通道能力需按本机方案配置 |
+| Linux | ✅ | ✅ | 可运行/可打包，音频设备与权限依发行版而异 |
+
 ## 环境要求
 
-- macOS（当前版本主目标平台）
 - Node.js 20+
 - npm 10+
 - 可用的 LLM / ASR API Key
 
-> 双声道面试转写建议安装 BlackHole：
->
-> ```bash
-> brew install --cask blackhole-2ch
-> ```
+### macOS 额外建议
 
-## 本地开发
+双声道面试转写建议安装 BlackHole：
+
+```bash
+brew install --cask blackhole-2ch
+```
+
+## 本地运行（多平台）
+
+### 1) 克隆并安装依赖（macOS / Windows / Linux）
 
 ```bash
 git clone https://github.com/wyzz973/awesome-ai-interview-assistant.git
 cd awesome-ai-interview-assistant
 npm install
+```
+
+### 2) 启动开发环境
+
+```bash
 npm run dev
 ```
 
-常用命令：
+### 3) 构建
+
+```bash
+npm run build
+```
+
+### 4) 校验
 
 ```bash
 npm run typecheck
 npm run test:e2e
 npx vitest run
-npm run build
-npm run package
 ```
+
+## 打包发布（多平台）
+
+### macOS
+
+```bash
+npm run package:mac
+```
+
+附加目标：
+
+```bash
+npm run package:dmg
+npm run package:zip
+```
+
+### Windows
+
+```bash
+npm run package:win
+```
+
+输出 NSIS 安装包（`.exe`）。
+
+### Linux
+
+```bash
+npm run package:linux
+```
+
+输出 `AppImage` 和 `deb`。
+
+### 一次性构建全部平台（建议在 CI 中做）
+
+```bash
+npm run package:all
+```
+
+> 跨平台打包依赖宿主系统能力。最稳方案：  
+> 在对应平台原生机器上打包，或使用 GitHub Actions 的矩阵任务（`macos-latest` / `windows-latest` / `ubuntu-latest`）。
 
 ## 数据与隐私
 
