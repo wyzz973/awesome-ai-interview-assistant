@@ -1,6 +1,8 @@
 import { app, BrowserWindow, shell } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
+import { IPC_CHANNELS } from '@shared/types/ipc'
+import { DEFAULT_WHISPER_STREAMING } from '@shared/constants'
 
 import { ConfigManager } from './config/ConfigManager'
 import { getDatabase, closeDatabase } from './db/database'
@@ -8,14 +10,17 @@ import { SessionRepo } from './db/repositories/SessionRepo'
 import { TranscriptRepo } from './db/repositories/TranscriptRepo'
 import { ScreenshotQARepo } from './db/repositories/ScreenshotQARepo'
 import { ReviewRepo } from './db/repositories/ReviewRepo'
+import { SessionContextRepo } from './db/repositories/SessionContextRepo'
+import { InterviewMemoryRepo } from './db/repositories/InterviewMemoryRepo'
 import { LLMService } from './services/LLMService'
 import { ASRService } from './services/ASRService'
 import { ReviewService } from './services/ReviewService'
+import { InterviewMemoryService } from './services/InterviewMemoryService'
+import { ResumeParser } from './services/ResumeParser'
 import { WhisperASR } from './services/ASRProviders/WhisperASR'
 import { AliyunASR } from './services/ASRProviders/AliyunASR'
 import { TencentASR } from './services/ASRProviders/TencentASR'
 import { StealthWindow } from './window/StealthWindow'
-import { SelectorWindow } from './window/SelectorWindow'
 import { ScreenCapture } from './capture/ScreenCapture'
 import { AudioCapture } from './capture/AudioCapture'
 import { SessionRecorder } from './recorder/SessionRecorder'
@@ -24,10 +29,32 @@ import { TrayManager } from './tray/TrayManager'
 import { registerIPCHandlers } from './ipc/handlers'
 import { initializeLogger, getLogger } from './logger'
 
+interface RecordingToggleResult {
+  success: boolean
+  isRecording: boolean
+  sessionId?: string
+  warning?: string
+  error?: string
+}
+
+interface InterviewStartOptions {
+  company?: string
+  position?: string
+  round?: string
+  backgroundNote?: string
+  resumeFilePath?: string
+  resumeFileName?: string
+}
+
+interface RecordingStatusSnapshot {
+  isRecording: boolean
+  sessionId: string | null
+  asrRunning: boolean
+}
+
 class App {
   private configManager!: ConfigManager
   private stealthWindow!: StealthWindow
-  private selectorWindow!: SelectorWindow
   private screenCapture!: ScreenCapture
   private audioCapture!: AudioCapture
   private llmService!: LLMService
@@ -42,8 +69,14 @@ class App {
   private transcriptRepo!: TranscriptRepo
   private screenshotQARepo!: ScreenshotQARepo
   private reviewRepo!: ReviewRepo
+  private sessionContextRepo!: SessionContextRepo
+  private interviewMemoryRepo!: InterviewMemoryRepo
+  private interviewMemoryService!: InterviewMemoryService
+  private resumeParser!: ResumeParser
 
   private log = getLogger('App')
+  private asrTranscriptSeq = 0
+  private asrDebugSeq = 0
 
   async initialize(): Promise<void> {
     initializeLogger()
@@ -58,24 +91,29 @@ class App {
     this.transcriptRepo = new TranscriptRepo(db)
     this.screenshotQARepo = new ScreenshotQARepo(db)
     this.reviewRepo = new ReviewRepo(db)
+    this.sessionContextRepo = new SessionContextRepo(db)
+    this.interviewMemoryRepo = new InterviewMemoryRepo(db)
 
     // 3. LLM Service (用 chat 配置初始化)
-    const llmConfig = this.configManager.get('llm')
+    const llmConfig = await this.configManager.getResolvedLLMConfig()
     this.llmService = new LLMService(llmConfig.chat)
 
     // 监听 LLM 配置变更，自动更新
-    this.configManager.onChanged('llm', (newVal) => {
-      const cfg = newVal as typeof llmConfig
-      this.llmService.updateConfig(cfg.chat)
+    this.configManager.onChanged('llm', () => {
+      void (async () => {
+        const cfg = await this.configManager.getResolvedLLMConfig()
+        this.llmService.updateConfig(cfg.chat)
+        await this.setupASRProviders()
+      })()
     })
 
     // 4. ASR Service
     this.asrService = new ASRService()
-    this.setupASRProviders()
+    await this.setupASRProviders()
 
     // 监听 ASR 配置变更
     this.configManager.onChanged('asr', () => {
-      this.setupASRProviders()
+      void this.setupASRProviders()
     })
 
     // 5. Review Service
@@ -83,33 +121,70 @@ class App {
 
     // 6. Windows
     this.stealthWindow = new StealthWindow()
-    this.selectorWindow = new SelectorWindow()
 
     // 7. Capture Services
-    this.screenCapture = new ScreenCapture(this.stealthWindow, this.selectorWindow)
+    this.screenCapture = new ScreenCapture(this.stealthWindow)
     this.audioCapture = new AudioCapture()
 
     // 8. SessionRecorder
     const dbPath = join(app.getPath('userData'), 'data', 'interviews.db')
     this.sessionRecorder = new SessionRecorder(dbPath)
+    this.resumeParser = new ResumeParser()
+    this.interviewMemoryService = new InterviewMemoryService(
+      this.sessionContextRepo,
+      this.interviewMemoryRepo,
+    )
+
+    // 8.1 统一注册 ASR 转写回调（热键录制和 IPC 启动共用）
+    this.asrService.onTranscript((transcript) => {
+      const sessionId = this.sessionRecorder.getSessionId() ?? ''
+      this.sendToRenderer(IPC_CHANNELS.ASR_TRANSCRIPT, {
+        id: `asr-${transcript.timestamp}-${++this.asrTranscriptSeq}`,
+        sessionId,
+        timestamp: transcript.timestamp,
+        speaker: transcript.speaker,
+        text: transcript.text,
+        isFinal: transcript.isFinal,
+      })
+
+      if (this.sessionRecorder.isRecording() && transcript.isFinal && transcript.text.trim()) {
+        this.sessionRecorder.recordTranscript(
+          transcript.speaker,
+          transcript.text,
+          transcript.timestamp,
+          transcript.isFinal,
+        )
+        const activeSessionId = this.sessionRecorder.getSessionId()
+        if (activeSessionId) {
+          this.interviewMemoryService.appendTranscript({
+            sessionId: activeSessionId,
+            speaker: transcript.speaker,
+            text: transcript.text,
+            timestamp: transcript.timestamp,
+            isFinal: transcript.isFinal,
+          })
+        }
+      }
+    })
 
     // 9. 连接 AudioCapture 到 ASRService
     this.audioCapture.setOnMicData((data) => {
-      this.asrService.sendMicAudio(data.buffer as ArrayBuffer)
+      const audio = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)
+      this.asrService.sendMicAudio(audio)
     })
     this.audioCapture.setOnSystemAudioData((data) => {
-      this.asrService.sendSystemAudio(data.buffer as ArrayBuffer)
+      const audio = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)
+      this.asrService.sendSystemAudio(audio)
     })
 
-    // 10. 创建主窗口
-    this.createWindow()
-
-    // 11. IPC Handlers
+    // 10. IPC Handlers（必须先注册，避免 renderer 启动后调用时出现 "No handler registered"）
     registerIPCHandlers({
       configManager: this.configManager,
       stealthWindow: this.stealthWindow,
       screenCapture: this.screenCapture,
       audioCapture: this.audioCapture,
+      toggleRecording: (options) => this.handleToggleRecording(options),
+      getRecordingStatus: () => this.getRecordingStatusSnapshot(),
       asrService: this.asrService,
       llmService: this.llmService,
       reviewService: this.reviewService,
@@ -118,6 +193,18 @@ class App {
       transcriptRepo: this.transcriptRepo,
       screenshotQARepo: this.screenshotQARepo,
       reviewRepo: this.reviewRepo,
+      sessionContextRepo: this.sessionContextRepo,
+      interviewMemoryService: this.interviewMemoryService,
+    })
+
+    // 11. 创建主窗口
+    this.createWindow()
+
+    // 外观配置变更后实时应用到窗口
+    this.configManager.onChanged('appearance', (newVal) => {
+      const appearance = newVal as import('@shared/types/config').AppearanceConfig
+      this.stealthWindow.setOpacity(appearance.opacity)
+      this.stealthWindow.resize(appearance.panelWidth, appearance.panelHeight)
     })
 
     // 12. HotkeyManager
@@ -144,7 +231,8 @@ class App {
 
   private createWindow(): void {
     this.log.info('创建主窗口')
-    const mainWindow = this.stealthWindow.create()
+    const appearance = this.configManager.get('appearance') as import('@shared/types/config').AppearanceConfig
+    const mainWindow = this.stealthWindow.create(appearance)
 
     mainWindow.on('ready-to-show', () => {
       this.stealthWindow.show()
@@ -162,37 +250,144 @@ class App {
     }
   }
 
-  private setupASRProviders(): void {
-    const asrConfig = this.configManager.get('asr')
+  private async setupASRProviders(): Promise<void> {
+    try {
+      const asrConfig = await this.configManager.getResolvedASRConfig()
 
-    switch (asrConfig.provider) {
-      case 'whisper': {
-        const whisperConfig = asrConfig.whisper ?? {
-          baseURL: this.configManager.get('llm').chat.baseURL,
-          apiKey: this.configManager.get('llm').chat.apiKey,
+      switch (asrConfig.provider) {
+        case 'whisper': {
+          const resolvedLLM = await this.configManager.getResolvedLLMConfig()
+          const whisperConfig = asrConfig.whisper ?? {
+            id: resolvedLLM.chat.id,
+            name: resolvedLLM.chat.name,
+            baseURL: resolvedLLM.chat.baseURL,
+            apiKey: resolvedLLM.chat.apiKey,
+            model: 'gpt-4o-mini-transcribe',
+            streaming: { ...DEFAULT_WHISPER_STREAMING },
+          }
+          const effectiveConfig = {
+            providerId: whisperConfig.id,
+            baseURL: whisperConfig.baseURL,
+            apiKey: whisperConfig.apiKey || resolvedLLM.chat.apiKey,
+            model: this.normalizeWhisperASRModel(whisperConfig.id, whisperConfig.baseURL, whisperConfig.model),
+            streaming: {
+              ...DEFAULT_WHISPER_STREAMING,
+              ...(whisperConfig.streaming ?? {}),
+            },
+          }
+          const whisper = this.createWhisperProvider('interviewer', effectiveConfig)
+          this.asrService.setSystemProvider(whisper)
+          this.asrService.setMicProvider(this.createWhisperProvider('me', effectiveConfig))
+          break
         }
-        const whisper = new WhisperASR(whisperConfig)
-        this.asrService.setSystemProvider(whisper)
-        this.asrService.setMicProvider(new WhisperASR(whisperConfig))
-        break
-      }
-      case 'aliyun': {
-        if (asrConfig.aliyun) {
-          const provider = new AliyunASR(asrConfig.aliyun)
-          this.asrService.setSystemProvider(provider)
-          this.asrService.setMicProvider(new AliyunASR(asrConfig.aliyun))
+        case 'aliyun': {
+          if (asrConfig.aliyun) {
+            const provider = new AliyunASR(asrConfig.aliyun)
+            this.asrService.setSystemProvider(provider)
+            this.asrService.setMicProvider(new AliyunASR(asrConfig.aliyun))
+          } else {
+            this.log.warn('阿里云 ASR 配置不完整，回退到 Whisper')
+            const resolvedLLM = await this.configManager.getResolvedLLMConfig()
+            this.asrService.setSystemProvider(this.createWhisperProvider('interviewer', {
+              providerId: resolvedLLM.chat.id,
+              baseURL: resolvedLLM.chat.baseURL,
+              apiKey: resolvedLLM.chat.apiKey,
+              model: 'gpt-4o-mini-transcribe',
+              streaming: { ...DEFAULT_WHISPER_STREAMING },
+            }))
+            this.asrService.setMicProvider(this.createWhisperProvider('me', {
+              providerId: resolvedLLM.chat.id,
+              baseURL: resolvedLLM.chat.baseURL,
+              apiKey: resolvedLLM.chat.apiKey,
+              model: 'gpt-4o-mini-transcribe',
+              streaming: { ...DEFAULT_WHISPER_STREAMING },
+            }))
+          }
+          break
         }
-        break
-      }
-      case 'tencent': {
-        if (asrConfig.tencent) {
-          const provider = new TencentASR(asrConfig.tencent)
-          this.asrService.setSystemProvider(provider)
-          this.asrService.setMicProvider(new TencentASR(asrConfig.tencent))
+        case 'tencent': {
+          if (asrConfig.tencent) {
+            const provider = new TencentASR(asrConfig.tencent)
+            this.asrService.setSystemProvider(provider)
+            this.asrService.setMicProvider(new TencentASR(asrConfig.tencent))
+          } else {
+            this.log.warn('腾讯云 ASR 配置不完整，回退到 Whisper')
+            const resolvedLLM = await this.configManager.getResolvedLLMConfig()
+            this.asrService.setSystemProvider(this.createWhisperProvider('interviewer', {
+              providerId: resolvedLLM.chat.id,
+              baseURL: resolvedLLM.chat.baseURL,
+              apiKey: resolvedLLM.chat.apiKey,
+              model: 'gpt-4o-mini-transcribe',
+              streaming: { ...DEFAULT_WHISPER_STREAMING },
+            }))
+            this.asrService.setMicProvider(this.createWhisperProvider('me', {
+              providerId: resolvedLLM.chat.id,
+              baseURL: resolvedLLM.chat.baseURL,
+              apiKey: resolvedLLM.chat.apiKey,
+              model: 'gpt-4o-mini-transcribe',
+              streaming: { ...DEFAULT_WHISPER_STREAMING },
+            }))
+          }
+          break
         }
-        break
+        default: {
+          this.log.warn('未知 ASR 供应商，回退到 Whisper', { provider: asrConfig.provider })
+          const resolvedLLM = await this.configManager.getResolvedLLMConfig()
+          this.asrService.setSystemProvider(
+            this.createWhisperProvider('interviewer', {
+              providerId: resolvedLLM.chat.id,
+              baseURL: resolvedLLM.chat.baseURL,
+              apiKey: resolvedLLM.chat.apiKey,
+              model: 'gpt-4o-mini-transcribe',
+              streaming: { ...DEFAULT_WHISPER_STREAMING },
+            }),
+          )
+          this.asrService.setMicProvider(
+            this.createWhisperProvider('me', {
+              providerId: resolvedLLM.chat.id,
+              baseURL: resolvedLLM.chat.baseURL,
+              apiKey: resolvedLLM.chat.apiKey,
+              model: 'gpt-4o-mini-transcribe',
+              streaming: { ...DEFAULT_WHISPER_STREAMING },
+            }),
+          )
+        }
       }
+    } catch (err) {
+      this.log.error('初始化 ASR Provider 失败', err)
     }
+  }
+
+  private normalizeWhisperASRModel(providerId: string, baseURL: string, model?: string): string {
+    const normalizedBaseURL = baseURL.toLowerCase()
+    const isQwenLike = providerId === 'qwen' || normalizedBaseURL.includes('dashscope.aliyuncs.com')
+    const fallback = isQwenLike ? 'qwen3-asr-flash' : 'gpt-4o-mini-transcribe'
+    const raw = model?.trim()
+    if (!raw) return fallback
+
+    if (/(tts|text[-_]?to[-_]?speech|speech[-_]?synthesis|voice[-_]?clone)/i.test(raw)) {
+      this.log.warn('检测到 TTS 模型被用于 ASR，自动回退到 ASR 模型', {
+        from: raw,
+        to: fallback,
+      })
+      return fallback
+    }
+    return raw
+  }
+
+  private createWhisperProvider(
+    speaker: 'interviewer' | 'me',
+    config: ConstructorParameters<typeof WhisperASR>[0],
+  ): WhisperASR {
+    const provider = new WhisperASR(config)
+    provider.onDebug((event) => {
+      this.sendToRenderer(IPC_CHANNELS.ASR_DEBUG, {
+        id: `asr-debug-${event.timestamp}-${++this.asrDebugSeq}`,
+        speaker,
+        ...event,
+      })
+    })
+    return provider
   }
 
   private registerHotkeyHandlers(): void {
@@ -219,20 +414,60 @@ class App {
     }
   }
 
-  private async handleToggleRecording(): Promise<void> {
+  private async handleToggleRecording(options?: InterviewStartOptions): Promise<RecordingToggleResult> {
     try {
       if (this.sessionRecorder.isRecording()) {
-        await this.sessionRecorder.stopSession()
+        const sessionId = await this.sessionRecorder.stopSession()
         if (this.asrService.isRunning()) {
           await this.asrService.stopStream()
         }
         this.audioCapture.stop()
         this.stealthWindow.enableInteraction()
         this.trayManager.setStatus('ready')
-        this.sendToRenderer('recording:stopped')
+        this.sendToRenderer('recording:stopped', { sessionId })
+        return { success: true, isRecording: false, ...(sessionId ? { sessionId } : {}) }
       } else {
         // 启动会话录制
-        const sessionId = await this.sessionRecorder.startSession()
+        const draftCompany = options?.company?.trim()
+        const draftPosition = options?.position?.trim()
+        const company = draftCompany || '模拟面试'
+        const position = draftPosition || '软件工程师'
+        const sessionId = await this.sessionRecorder.startSession(company, position)
+        let warning = ''
+
+        const round = options?.round?.trim() ?? ''
+        const backgroundNote = options?.backgroundNote?.trim() ?? ''
+        const resumeFilePath = options?.resumeFilePath?.trim() ?? ''
+        const resumeFileName = options?.resumeFileName?.trim() ?? ''
+
+        if (round || backgroundNote || resumeFilePath) {
+          let resumeText = ''
+          if (resumeFilePath) {
+            try {
+              const parsed = await this.resumeParser.parse(resumeFilePath)
+              resumeText = parsed.text
+            } catch (err) {
+              const detail = err instanceof Error ? err.message : String(err)
+              warning = warning
+                ? `${warning}；简历解析失败：${detail}`
+                : `简历解析失败：${detail}`
+              this.sendToRenderer('recording:error', {
+                message: `简历解析失败：${detail}`,
+                fatal: false,
+                code: 'resume-parse-failed',
+              })
+            }
+          }
+
+          this.interviewMemoryService.ingestSessionContext({
+            sessionId,
+            round,
+            backgroundNote,
+            resumeFilePath,
+            resumeFileName,
+            resumeText,
+          })
+        }
 
         // ASR 和音频捕获可能因未配置而失败，不阻塞录制
         try {
@@ -240,23 +475,70 @@ class App {
           await this.asrService.startStream(asrConfig.sampleRate, asrConfig.language)
         } catch (asrErr) {
           this.log.warn('ASR 启动失败（将不带转写继续录制）', asrErr)
+          warning = 'ASR 启动失败，当前会话不会生成实时转写'
+          this.sendToRenderer('recording:error', {
+            message: warning,
+            fatal: false,
+            code: 'asr-start-failed',
+          })
         }
 
         try {
           await this.audioCapture.start()
         } catch (audioErr) {
           this.log.warn('音频捕获启动失败', audioErr)
+          const detail = audioErr instanceof Error ? audioErr.message : String(audioErr)
+
+          // 音频采集不可用时，回滚本次录制启动，避免出现“界面未录制但会话已开始”的不一致状态
+          if (this.asrService.isRunning()) {
+            await this.asrService.stopStream().catch(() => {})
+          }
+          if (this.sessionRecorder.isRecording()) {
+            await this.sessionRecorder.stopSession().catch(() => {})
+          }
+          this.audioCapture.stop()
+          this.stealthWindow.enableInteraction()
+          this.trayManager.setStatus('ready')
+          const error = `音频捕获启动失败：${detail}`
+          this.sendToRenderer('recording:error', {
+            message: error,
+            fatal: true,
+            code: 'audio-capture-start-failed',
+          })
+          return { success: false, isRecording: false, error }
         }
 
         this.stealthWindow.disableInteraction()
         this.trayManager.setStatus('recording')
         this.sendToRenderer('recording:started', { sessionId })
+        return {
+          success: true,
+          isRecording: true,
+          sessionId,
+          ...(warning ? { warning } : {}),
+        }
       }
     } catch (err) {
       this.log.error('录制切换失败', err)
+      const error = err instanceof Error ? err.message : String(err)
       this.sendToRenderer('recording:error', {
-        message: err instanceof Error ? err.message : String(err)
+        message: error,
+        fatal: true,
+        code: 'recording-toggle-failed',
       })
+      return {
+        success: false,
+        isRecording: this.sessionRecorder?.isRecording?.() ?? false,
+        error,
+      }
+    }
+  }
+
+  private getRecordingStatusSnapshot(): RecordingStatusSnapshot {
+    return {
+      isRecording: this.sessionRecorder?.isRecording?.() ?? false,
+      sessionId: this.sessionRecorder?.getSessionId?.() ?? null,
+      asrRunning: this.asrService?.isRunning?.() ?? false,
     }
   }
 

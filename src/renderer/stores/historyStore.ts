@@ -4,6 +4,7 @@ import type {
   TranscriptEntry,
   ScreenshotQA,
   ReviewReport,
+  SessionContext,
 } from '@shared/types'
 
 interface HistoryFilters {
@@ -17,6 +18,7 @@ interface HistoryState {
   transcripts: TranscriptEntry[]
   screenshotQAs: ScreenshotQA[]
   review: ReviewReport | null
+  sessionContext: SessionContext | null
   filters: HistoryFilters
   loading: boolean
 
@@ -44,6 +46,7 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
   transcripts: [],
   screenshotQAs: [],
   review: null,
+  sessionContext: null,
   filters: { sortBy: 'time-desc' },
   loading: false,
 
@@ -63,7 +66,13 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
     set({ loading: true })
     try {
       const session = (await api.sessionGet(sessionId)) as
-        | { session: Session; transcripts: TranscriptEntry[]; screenshotQAs: ScreenshotQA[]; review: ReviewReport | null }
+        | {
+          session: Session
+          transcripts: TranscriptEntry[]
+          screenshotQAs: ScreenshotQA[]
+          review: ReviewReport | null
+          context?: SessionContext | null
+        }
         | null
       if (session) {
         set({
@@ -71,6 +80,15 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
           transcripts: session.transcripts,
           screenshotQAs: session.screenshotQAs,
           review: session.review,
+          sessionContext: session.context ?? null,
+        })
+      } else {
+        set({
+          currentSession: null,
+          transcripts: [],
+          screenshotQAs: [],
+          review: null,
+          sessionContext: null,
         })
       }
     } finally {
@@ -135,6 +153,7 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
       transcripts: [],
       screenshotQAs: [],
       review: null,
+      sessionContext: null,
     })
   },
 }))

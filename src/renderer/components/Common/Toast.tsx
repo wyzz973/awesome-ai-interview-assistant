@@ -49,6 +49,7 @@ function ToastEntry({ item, onRemove }: { item: ToastItem; onRemove: (id: string
       <Icon size={18} className="shrink-0" />
       <span className="text-sm text-text-primary flex-1">{item.message}</span>
       <button
+        aria-label="关闭提示"
         onClick={() => onRemove(item.id)}
         className="text-text-muted hover:text-text-secondary transition-colors cursor-pointer bg-transparent border-none p-0 shrink-0"
       >

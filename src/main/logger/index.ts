@@ -4,19 +4,25 @@ import { resolveLogPath, cleanOldLogs } from './transports'
 
 let initialized = false
 
+export function isIgnorableStreamWriteError(err: NodeJS.ErrnoException): boolean {
+  if (!err) return false
+  return err.code === 'EPIPE' || err.code === 'EIO' || err.code === 'ERR_STREAM_DESTROYED'
+}
+
 /**
  * 初始化日志系统（应在 app.whenReady 后调用一次）
  */
 export function initializeLogger(): void {
   if (initialized) return
 
-  // 忽略 stdout/stderr 管道断裂错误（EPIPE），
-  // 当启动 Electron 的终端关闭时 electron-log console transport 会触发
+  // 忽略 stdout/stderr 写入错误（EPIPE/EIO），
+  // 当启动 Electron 的终端关闭、stdio 失效时 electron-log console transport 会触发。
+  // 这些错误不应导致主进程崩溃。
   process.stdout?.on?.('error', (err: NodeJS.ErrnoException) => {
-    if (err.code !== 'EPIPE') throw err
+    if (!isIgnorableStreamWriteError(err)) throw err
   })
   process.stderr?.on?.('error', (err: NodeJS.ErrnoException) => {
-    if (err.code !== 'EPIPE') throw err
+    if (!isIgnorableStreamWriteError(err)) throw err
   })
 
   const isDev = !app.isPackaged

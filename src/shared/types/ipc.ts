@@ -7,6 +7,7 @@ export const IPC_CHANNELS = {
 
   // 截屏
   SCREENSHOT_CAPTURE: 'screenshot:capture',
+  RESUME_PICK_FILE: 'resume:pickFile',
 
   // AI / LLM
   LLM_CHAT: 'llm:chat',
@@ -23,6 +24,13 @@ export const IPC_CHANNELS = {
   ASR_TRANSCRIPT: 'asr:transcript',
   ASR_STATUS: 'asr:status',
   ASR_TEST_CONNECTION: 'asr:testConnection',
+  ASR_PUSH_MIC_AUDIO: 'asr:pushMicAudio',
+  ASR_PUSH_SYSTEM_AUDIO: 'asr:pushSystemAudio',
+  ASR_DEBUG: 'asr:debug',
+
+  // 录音控制
+  RECORDING_TOGGLE: 'recording:toggle',
+  RECORDING_STATUS: 'recording:status',
 
   // 会话管理
   SESSION_START: 'session:start',

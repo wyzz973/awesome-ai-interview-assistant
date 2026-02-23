@@ -14,11 +14,14 @@ export interface AudioDevice {
 
 export type AudioDataCallback = (data: Buffer) => void
 
+/**
+ * 音频捕获桥接器（主进程）
+ *
+ * 实际采集在 renderer 进程完成（可使用 getUserMedia/MediaRecorder），
+ * 主进程仅维护录制状态并转发音频分片给 ASRService。
+ */
 export class AudioCapture {
-  private micStream: MediaRecorder | null = null
-  private systemStream: MediaRecorder | null = null
-  private isCapturing: boolean = false
-
+  private isCapturing = false
   private onMicData: AudioDataCallback | null = null
   private onSystemAudioData: AudioDataCallback | null = null
 
@@ -32,10 +35,10 @@ export class AudioCapture {
     this.onSystemAudioData = callback
   }
 
-  /** 开始捕获 */
-  async start(micDeviceId?: string, systemDeviceId?: string): Promise<void> {
+  /** 开始捕获（主进程仅做权限检查和状态切换） */
+  async start(): Promise<void> {
     if (this.isCapturing) return
-    log.info('开始音频捕获')
+    log.info('开始音频捕获（renderer bridge）')
 
     // 请求麦克风权限 (macOS)
     if (process.platform === 'darwin') {
@@ -43,38 +46,31 @@ export class AudioCapture {
       if (micStatus !== 'granted') {
         const granted = await systemPreferences.askForMediaAccess('microphone')
         if (!granted) {
-          throw new Error('Microphone access denied')
+          throw new Error('麦克风权限被拒绝')
         }
       }
     }
 
     this.isCapturing = true
-
-    // 启动麦克风捕获
-    if (this.onMicData) {
-      await this.startMicCapture(micDeviceId)
-    }
-
-    // 启动系统音频捕获 (需要 BlackHole)
-    if (this.onSystemAudioData && systemDeviceId) {
-      await this.startSystemCapture(systemDeviceId)
-    }
   }
 
   /** 停止捕获 */
   stop(): void {
+    if (!this.isCapturing) return
     log.info('停止音频捕获')
     this.isCapturing = false
+  }
 
-    if (this.micStream && this.micStream.state !== 'inactive') {
-      this.micStream.stop()
-    }
-    this.micStream = null
+  /** 从 renderer 推入麦克风音频分片 */
+  pushMicData(data: Buffer): void {
+    if (!this.isCapturing || !this.onMicData || data.length === 0) return
+    this.onMicData(data)
+  }
 
-    if (this.systemStream && this.systemStream.state !== 'inactive') {
-      this.systemStream.stop()
-    }
-    this.systemStream = null
+  /** 从 renderer 推入系统音频分片 */
+  pushSystemAudioData(data: Buffer): void {
+    if (!this.isCapturing || !this.onSystemAudioData || data.length === 0) return
+    this.onSystemAudioData(data)
   }
 
   /** 列出可用音频设备 */
@@ -111,15 +107,23 @@ export class AudioCapture {
 
   /** 检测 BlackHole 是否已安装 */
   async checkBlackHole(): Promise<boolean> {
-    try {
-      // 优先检查驱动文件是否存在（system_profiler 可能不列出虚拟音频设备）
-      const { stdout } = await execAsync(
-        'ls /Library/Audio/Plug-Ins/HAL/ 2>/dev/null | grep -i blackhole',
-      )
-      return stdout.trim().length > 0
-    } catch {
-      return false
+    const probes = [
+      'test -d "/Library/Audio/Plug-Ins/HAL" && ls "/Library/Audio/Plug-Ins/HAL" 2>/dev/null | grep -qi "blackhole"',
+      'test -d "$HOME/Library/Audio/Plug-Ins/HAL" && ls "$HOME/Library/Audio/Plug-Ins/HAL" 2>/dev/null | grep -qi "blackhole"',
+      'brew list --cask blackhole-2ch >/dev/null 2>&1',
+    ]
+
+    for (const probe of probes) {
+      try {
+        await execAsync(probe)
+        log.debug('BlackHole 检测命中', { probe })
+        return true
+      } catch {
+        // try next probe
+      }
     }
+    log.debug('BlackHole 检测未命中')
+    return false
   }
 
   /** 通过 brew 安装 BlackHole 2ch（在终端中执行） */
@@ -147,52 +151,6 @@ export class AudioCapture {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       return { success: false, error: `无法打开终端: ${msg}` }
-    }
-  }
-
-  private async startMicCapture(deviceId?: string): Promise<void> {
-    try {
-      const constraints: MediaStreamConstraints = {
-        audio: deviceId
-          ? { deviceId: { exact: deviceId } }
-          : true,
-      }
-
-      const stream = await navigator.mediaDevices.getUserMedia(constraints)
-      this.micStream = new MediaRecorder(stream, { mimeType: 'audio/webm' })
-
-      this.micStream.ondataavailable = async (event): Promise<void> => {
-        if (event.data.size > 0 && this.onMicData) {
-          const arrayBuffer = await event.data.arrayBuffer()
-          this.onMicData(Buffer.from(arrayBuffer))
-        }
-      }
-
-      this.micStream.start(250) // 250ms chunks
-    } catch (err) {
-      log.error('麦克风捕获失败', err)
-    }
-  }
-
-  private async startSystemCapture(deviceId: string): Promise<void> {
-    try {
-      const constraints: MediaStreamConstraints = {
-        audio: { deviceId: { exact: deviceId } },
-      }
-
-      const stream = await navigator.mediaDevices.getUserMedia(constraints)
-      this.systemStream = new MediaRecorder(stream, { mimeType: 'audio/webm' })
-
-      this.systemStream.ondataavailable = async (event): Promise<void> => {
-        if (event.data.size > 0 && this.onSystemAudioData) {
-          const arrayBuffer = await event.data.arrayBuffer()
-          this.onSystemAudioData(Buffer.from(arrayBuffer))
-        }
-      }
-
-      this.systemStream.start(250) // 250ms chunks
-    } catch (err) {
-      log.error('系统音频捕获失败', err)
     }
   }
 }

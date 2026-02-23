@@ -2,6 +2,7 @@ import { BrowserWindow, screen } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { DEFAULT_APPEARANCE } from '@shared/constants'
+import type { AppearanceConfig } from '@shared/types/config'
 import { getLogger } from '../logger'
 
 const log = getLogger('StealthWindow')
@@ -11,16 +12,24 @@ export class StealthWindow {
   private opacity: number = DEFAULT_APPEARANCE.opacity
   private isInteractable: boolean = true
 
-  create(): BrowserWindow {
+  create(appearance?: Partial<AppearanceConfig>): BrowserWindow {
     log.debug('创建隐身窗口')
-    const { width: screenWidth, height: screenHeight } = screen.getPrimaryDisplay().workAreaSize
+    const { width: screenWidth, height: screenHeight, x: screenX, y: screenY } = screen.getPrimaryDisplay().workArea
+    const winWidth = appearance?.panelWidth ?? DEFAULT_APPEARANCE.panelWidth
+    const winHeight = appearance?.panelHeight ?? DEFAULT_APPEARANCE.panelHeight
+    const startPosition = appearance?.startPosition ?? DEFAULT_APPEARANCE.startPosition
+    this.opacity = appearance?.opacity ?? DEFAULT_APPEARANCE.opacity
 
-    const winWidth = DEFAULT_APPEARANCE.panelWidth
-    const winHeight = DEFAULT_APPEARANCE.panelHeight
-
-    // 计算起始位置（默认右侧）
-    const x = screenWidth - winWidth - 20
-    const y = Math.round((screenHeight - winHeight) / 2)
+    // 计算起始位置（默认右侧，可配置）
+    let x = screenX + (screenWidth - winWidth - 20)
+    let y = screenY + Math.round((screenHeight - winHeight) / 2)
+    if (startPosition === 'center') {
+      x = screenX + Math.round((screenWidth - winWidth) / 2)
+      y = screenY + Math.round((screenHeight - winHeight) / 2)
+    } else if (typeof startPosition === 'object') {
+      x = startPosition.x
+      y = startPosition.y
+    }
 
     this.window = new BrowserWindow({
       width: winWidth,
@@ -80,6 +89,13 @@ export class StealthWindow {
     if (this.window) {
       this.window.setOpacity(this.opacity)
     }
+  }
+
+  resize(width: number, height: number): void {
+    if (!this.window) return
+    const safeWidth = Math.max(320, Math.round(width))
+    const safeHeight = Math.max(360, Math.round(height))
+    this.window.setSize(safeWidth, safeHeight)
   }
 
   increaseOpacity(step: number = 0.1): void {

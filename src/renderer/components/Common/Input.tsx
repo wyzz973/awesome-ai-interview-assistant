@@ -1,4 +1,4 @@
-import { type InputHTMLAttributes, forwardRef, useState } from 'react'
+import { type InputHTMLAttributes, forwardRef, useId, useState } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 
 interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> {
@@ -14,19 +14,24 @@ const sizeClasses = {
 }
 
 const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, size = 'md', type, className = '', ...props }, ref) => {
+  ({ label, error, size = 'md', type, className = '', id, ...props }, ref) => {
     const [showPassword, setShowPassword] = useState(false)
+    const generatedId = useId()
+    const inputId = id ?? generatedId
     const isPassword = type === 'password'
     const inputType = isPassword && showPassword ? 'text' : type
 
     return (
       <div className="flex flex-col gap-1.5">
         {label && (
-          <label className="text-xs font-medium text-text-secondary">{label}</label>
+          <label htmlFor={inputId} className="text-xs font-medium text-text-secondary">
+            {label}
+          </label>
         )}
         <div className="relative">
           <input
             ref={ref}
+            id={inputId}
             type={inputType}
             className={`
               w-full bg-bg-tertiary text-text-primary
@@ -45,7 +50,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
           {isPassword && (
             <button
               type="button"
-              tabIndex={-1}
+              aria-label={showPassword ? '隐藏密码' : '显示密码'}
               onClick={() => setShowPassword((v) => !v)}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary transition-colors cursor-pointer bg-transparent border-none p-0"
             >

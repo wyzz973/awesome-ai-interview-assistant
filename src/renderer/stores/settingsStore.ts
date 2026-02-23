@@ -5,7 +5,7 @@ import type {
   ASRConfig,
   StorageConfig,
 } from '@shared/types'
-import type { LLMProvider } from '@shared/types'
+import type { LLMProvider, ProgrammingLanguagePreference } from '@shared/types'
 import type { HotkeyConfig, HotkeyAction } from '@shared/types'
 import { getLogger } from '../utils/logger'
 
@@ -35,6 +35,7 @@ interface SettingsState {
   resetHotkeys: () => Promise<void>
   updateAppearance: (appearance: Partial<AppearanceConfig>) => Promise<void>
   updateStorage: (storage: Partial<StorageConfig>) => Promise<void>
+  updateProgrammingLanguage: (language: ProgrammingLanguagePreference) => Promise<void>
   updateSystemPrompt: (prompt: string) => Promise<void>
   setEnableHistoryContext: (enabled: boolean) => Promise<void>
 }
@@ -72,8 +73,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     const updatedLLM = { ...config.llm, [key]: provider }
     const updated = { ...config, llm: updatedLLM }
     set({ config: updated, saving: true })
-    await api.configSet('llm', updatedLLM)
-    set({ saving: false })
+    try {
+      await api.configSet('llm', updatedLLM)
+    } finally {
+      set({ saving: false })
+    }
   },
 
   updateASR: async (asr) => {
@@ -82,8 +86,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     const updatedASR = { ...config.asr, ...asr }
     const updated = { ...config, asr: updatedASR }
     set({ config: updated, saving: true })
-    await api.configSet('asr', updatedASR)
-    set({ saving: false })
+    try {
+      await api.configSet('asr', updatedASR)
+    } finally {
+      set({ saving: false })
+    }
   },
 
   updateHotkey: async (action, accelerator) => {
@@ -92,8 +99,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     const updatedHotkeys = { ...config.hotkeys, [action]: accelerator }
     const updated = { ...config, hotkeys: updatedHotkeys }
     set({ config: updated, saving: true })
-    await api.hotkeyUpdate(action, accelerator)
-    set({ saving: false })
+    try {
+      await api.hotkeyUpdate(action, accelerator)
+    } finally {
+      set({ saving: false })
+    }
   },
 
   resetHotkeys: async () => {
@@ -108,8 +118,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     const updatedAppearance = { ...config.appearance, ...appearance }
     const updated = { ...config, appearance: updatedAppearance }
     set({ config: updated, saving: true })
-    await api.configSet('appearance', updatedAppearance)
-    set({ saving: false })
+    try {
+      await api.configSet('appearance', updatedAppearance)
+    } finally {
+      set({ saving: false })
+    }
   },
 
   updateStorage: async (storage) => {
@@ -118,8 +131,23 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     const updatedStorage = { ...config.storage, ...storage }
     const updated = { ...config, storage: updatedStorage }
     set({ config: updated, saving: true })
-    await api.configSet('storage', updatedStorage)
-    set({ saving: false })
+    try {
+      await api.configSet('storage', updatedStorage)
+    } finally {
+      set({ saving: false })
+    }
+  },
+
+  updateProgrammingLanguage: async (language) => {
+    const { config } = get()
+    if (!config || !api) return
+    const updated = { ...config, programmingLanguage: language }
+    set({ config: updated, saving: true })
+    try {
+      await api.configSet('programmingLanguage', language)
+    } finally {
+      set({ saving: false })
+    }
   },
 
   updateSystemPrompt: async (prompt) => {
@@ -127,8 +155,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     if (!config || !api) return
     const updated = { ...config, systemPrompt: prompt }
     set({ config: updated, saving: true })
-    await api.configSet('systemPrompt', prompt)
-    set({ saving: false })
+    try {
+      await api.configSet('systemPrompt', prompt)
+    } finally {
+      set({ saving: false })
+    }
   },
 
   setEnableHistoryContext: async (enabled) => {
@@ -136,7 +167,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     if (!config || !api) return
     const updated = { ...config, enableHistoryContext: enabled }
     set({ config: updated, saving: true })
-    await api.configSet('enableHistoryContext', enabled)
-    set({ saving: false })
+    try {
+      await api.configSet('enableHistoryContext', enabled)
+    } finally {
+      set({ saving: false })
+    }
   },
 }))

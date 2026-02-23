@@ -28,6 +28,7 @@ export class SessionRecorder {
 
     return new Promise<string>((resolve, reject) => {
       const timeout = setTimeout(() => {
+        this.cleanup()
         reject(new Error('Worker start timeout'))
       }, 10000)
 
@@ -40,6 +41,7 @@ export class SessionRecorder {
           resolve(response.sessionId)
         } else if (response.type === 'error') {
           clearTimeout(timeout)
+          this.cleanup()
           reject(new Error(response.error ?? 'Unknown worker error'))
         }
       })
@@ -47,6 +49,7 @@ export class SessionRecorder {
       this.worker!.once('error', (err) => {
         clearTimeout(timeout)
         log.error('Worker 错误', err)
+        this.cleanup()
         reject(err)
       })
 
@@ -101,9 +104,10 @@ export class SessionRecorder {
     log.info('停止录制会话', { sessionId: this.sessionId })
 
     return new Promise<string | null>((resolve) => {
+      const currentSessionId = this.sessionId
       const timeout = setTimeout(() => {
         this.cleanup()
-        resolve(this.sessionId)
+        resolve(currentSessionId)
       }, 10000)
 
       this.worker!.once('message', (response: WorkerResponse) => {
@@ -137,6 +141,7 @@ export class SessionRecorder {
 
   private cleanup(): void {
     this.recording = false
+    this.sessionId = null
     if (this.worker) {
       this.worker.terminate()
       this.worker = null

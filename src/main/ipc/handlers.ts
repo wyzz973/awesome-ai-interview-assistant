@@ -1,4 +1,7 @@
-import { ipcMain, BrowserWindow } from 'electron'
+import { ipcMain, BrowserWindow, app, dialog } from 'electron'
+import { basename, join } from 'path'
+import { mkdirSync, writeFileSync } from 'fs'
+import { randomUUID } from 'crypto'
 import { IPC_CHANNELS } from '@shared/types/ipc'
 import { DEFAULT_HOTKEYS } from '@shared/constants'
 import type { ConfigManager } from '@main/config/ConfigManager'
@@ -13,16 +16,54 @@ import type { SessionRepo } from '@main/db/repositories/SessionRepo'
 import type { TranscriptRepo } from '@main/db/repositories/TranscriptRepo'
 import type { ScreenshotQARepo } from '@main/db/repositories/ScreenshotQARepo'
 import type { ReviewRepo } from '@main/db/repositories/ReviewRepo'
+import type { SessionContextRepo } from '@main/db/repositories/SessionContextRepo'
 import type { ChatMessage } from '@shared/types/llm'
+import { WhisperASR } from '@main/services/ASRProviders/WhisperASR'
+import type { ProgrammingLanguagePreference } from '@shared/types/config'
+import { buildRuntimeSystemPrompt } from '@main/services/PromptPolicy'
+import type { InterviewMemoryService } from '@main/services/InterviewMemoryService'
 import { getLogger } from '../logger'
 
 const log = getLogger('IPC')
+const LANGUAGE_LABELS: Record<Exclude<ProgrammingLanguagePreference, 'auto'>, string> = {
+  python: 'Python',
+  java: 'Java',
+  javascript: 'JavaScript',
+  typescript: 'TypeScript',
+  go: 'Go',
+  cpp: 'C++',
+  c: 'C',
+  rust: 'Rust',
+  csharp: 'C#',
+  kotlin: 'Kotlin',
+  swift: 'Swift',
+  php: 'PHP',
+}
 
 export interface IPCDependencies {
   configManager: ConfigManager
   stealthWindow: StealthWindow
   screenCapture: ScreenCapture
   audioCapture: AudioCapture
+  toggleRecording: (options?: {
+    company?: string
+    position?: string
+    round?: string
+    backgroundNote?: string
+    resumeFilePath?: string
+    resumeFileName?: string
+  }) => Promise<{
+    success: boolean
+    isRecording: boolean
+    sessionId?: string
+    warning?: string
+    error?: string
+  }>
+  getRecordingStatus: () => {
+    isRecording: boolean
+    sessionId: string | null
+    asrRunning: boolean
+  }
   asrService: ASRService
   llmService: LLMService
   reviewService: ReviewService
@@ -31,6 +72,8 @@ export interface IPCDependencies {
   transcriptRepo: TranscriptRepo
   screenshotQARepo: ScreenshotQARepo
   reviewRepo: ReviewRepo
+  sessionContextRepo: SessionContextRepo
+  interviewMemoryService: InterviewMemoryService
 }
 
 export function registerIPCHandlers(deps: IPCDependencies): void {
@@ -40,6 +83,8 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
     stealthWindow,
     screenCapture,
     audioCapture,
+    toggleRecording,
+    getRecordingStatus,
     asrService,
     llmService,
     reviewService,
@@ -48,6 +93,8 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
     transcriptRepo,
     screenshotQARepo,
     reviewRepo,
+    sessionContextRepo,
+    interviewMemoryService,
   } = deps
 
   // ── Window ──
@@ -83,25 +130,93 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
     }
   })
 
+  ipcMain.handle(IPC_CHANNELS.RESUME_PICK_FILE, async (event) => {
+    try {
+      const ownerWindow = BrowserWindow.fromWebContents(event.sender) ?? undefined
+      const result = await dialog.showOpenDialog(ownerWindow, {
+        title: '选择简历文件',
+        properties: ['openFile'],
+        filters: [
+          {
+            name: 'Resume',
+            extensions: ['pdf', 'doc', 'docx', 'txt', 'md', 'markdown'],
+          },
+        ],
+      })
+
+      if (result.canceled || result.filePaths.length === 0) {
+        return { success: true, canceled: true }
+      }
+
+      const filePath = result.filePaths[0]
+      return {
+        success: true,
+        canceled: false,
+        filePath,
+        fileName: basename(filePath),
+      }
+    } catch (err) {
+      return {
+        success: false,
+        canceled: false,
+        error: err instanceof Error ? err.message : String(err),
+      }
+    }
+  })
+
   // ── LLM ──
   ipcMain.handle(IPC_CHANNELS.LLM_CHAT, async (event, messages: ChatMessage[]) => {
     try {
       // 每次调用前从 configManager 读取 chat 角色的最新配置
-      const llmConfig = configManager.get('llm') as { chat: import('@shared/types/llm').LLMProvider }
+      const llmConfig = await configManager.getResolvedLLMConfig()
       llmService.updateConfig(llmConfig.chat)
-      const stream = await llmService.chat(messages)
+      const systemPrompt = getSystemPrompt(configManager)
+      const sessionId = sessionRecorder.getSessionId()
+      const userQuery = extractLatestUserQuery(messages)
+      const sessionContext = sessionId && userQuery
+        ? interviewMemoryService.buildInjectedContext({
+            sessionId,
+            query: userQuery,
+            limit: 8,
+            maxChars: 3200,
+          })
+        : ''
+      const finalMessages = withSessionContextMessage(
+        withSystemPrompt(messages, systemPrompt),
+        sessionContext,
+      )
+      if (sessionId && userQuery) {
+        interviewMemoryService.appendChatMessage({
+          sessionId,
+          role: 'user',
+          text: userQuery,
+          timestamp: Date.now(),
+        })
+      }
+
+      const stream = await llmService.chat(finalMessages)
       const sender = event.sender
 
       // 流式推送每个 chunk 到渲染进程
       ;(async () => {
+        let fullAnswer = ''
         try {
           for await (const chunk of stream) {
+            fullAnswer += chunk
             if (!sender.isDestroyed()) {
               sender.send(IPC_CHANNELS.LLM_STREAM_CHUNK, chunk)
             }
           }
           if (!sender.isDestroyed()) {
             sender.send(IPC_CHANNELS.LLM_STREAM_END)
+          }
+          if (sessionId && fullAnswer.trim()) {
+            interviewMemoryService.appendChatMessage({
+              sessionId,
+              role: 'assistant',
+              text: fullAnswer,
+              timestamp: Date.now(),
+            })
           }
         } catch (err) {
           if (!sender.isDestroyed()) {
@@ -119,21 +234,77 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
   ipcMain.handle(IPC_CHANNELS.LLM_ANALYZE_SCREENSHOT, async (event, imageBase64: string, prompt?: string) => {
     try {
       // 读取 screenshot 角色配置，apiKey 为空时回退到 chat 配置
-      const llmConfig = configManager.get('llm') as { screenshot: import('@shared/types/llm').LLMProvider; chat: import('@shared/types/llm').LLMProvider }
+      const llmConfig = await configManager.getResolvedLLMConfig()
       const roleConfig = llmConfig.screenshot?.apiKey ? llmConfig.screenshot : llmConfig.chat
       llmService.updateConfig(roleConfig)
-      const stream = await llmService.analyzeScreenshot(imageBase64, prompt)
+      const rawQuestion = prompt?.trim() || '请分析这张截图'
+      const question = buildScreenshotQuestion(configManager, rawQuestion)
+      const systemPrompt = getSystemPrompt(configManager)
+      const language = getProgrammingLanguage(configManager)
+      const sessionId = sessionRecorder.getSessionId()
+      const sessionContext = sessionId
+        ? interviewMemoryService.buildInjectedContext({
+            sessionId,
+            query: question,
+            limit: 8,
+            maxChars: 3200,
+          })
+        : ''
+      log.debug('截图分析请求', {
+        language,
+        questionPreview: question.slice(0, 200),
+        hasSystemPrompt: !!systemPrompt,
+      })
+      const historyMessages: ChatMessage[] = []
+      if (systemPrompt) {
+        historyMessages.push({ role: 'system', content: systemPrompt })
+      }
+      if (sessionContext) {
+        historyMessages.push({ role: 'system', content: sessionContext })
+      }
+      const stream = await llmService.analyzeScreenshot(
+        imageBase64,
+        question,
+        historyMessages.length > 0 ? historyMessages : undefined,
+      )
       const sender = event.sender
+      const imagePath = sessionId ? persistScreenshotImage(sessionId, imageBase64) : ''
+      if (sessionId) {
+        interviewMemoryService.appendScreenshotQA({
+          sessionId,
+          timestamp: Date.now(),
+          question,
+        })
+      }
 
       ;(async () => {
+        let fullAnswer = ''
         try {
           for await (const chunk of stream) {
+            fullAnswer += chunk
             if (!sender.isDestroyed()) {
               sender.send(IPC_CHANNELS.LLM_STREAM_CHUNK, chunk)
             }
           }
           if (!sender.isDestroyed()) {
             sender.send(IPC_CHANNELS.LLM_STREAM_END)
+          }
+
+          if (sessionId && sessionRecorder.isRecording() && fullAnswer.trim()) {
+            sessionRecorder.recordScreenshotQA({
+              timestamp: Date.now(),
+              imagePath,
+              question,
+              answer: fullAnswer,
+              model: roleConfig.model,
+            })
+          }
+          if (sessionId && fullAnswer.trim()) {
+            interviewMemoryService.appendScreenshotQA({
+              sessionId,
+              timestamp: Date.now(),
+              answer: fullAnswer,
+            })
           }
         } catch (err) {
           if (!sender.isDestroyed()) {
@@ -152,41 +323,40 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
     return await llmService.testConnection(override)
   })
 
-  ipcMain.handle(IPC_CHANNELS.LLM_FETCH_MODELS, async (_e, baseURL: string, apiKey: string) => {
-    return await llmService.fetchModels(baseURL, apiKey)
+  ipcMain.handle(IPC_CHANNELS.LLM_FETCH_MODELS, async (_e, providerId: string, baseURL: string, apiKey: string) => {
+    return await llmService.fetchModels(baseURL, apiKey, providerId)
+  })
+
+  // ── Recording ──
+  ipcMain.handle(IPC_CHANNELS.RECORDING_TOGGLE, async (_e, options?: {
+    company?: string
+    position?: string
+    round?: string
+    backgroundNote?: string
+    resumeFilePath?: string
+    resumeFileName?: string
+  }) => {
+    try {
+      return await toggleRecording(options)
+    } catch (err) {
+      return {
+        success: false,
+        isRecording: getRecordingStatus().isRecording,
+        error: err instanceof Error ? err.message : String(err),
+      }
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.RECORDING_STATUS, async () => {
+    return getRecordingStatus()
   })
 
   // ── ASR ──
-  ipcMain.handle(IPC_CHANNELS.ASR_START, async (event) => {
+  ipcMain.handle(IPC_CHANNELS.ASR_START, async () => {
     try {
       const asrConfig = configManager.get('asr')
       const sampleRate = asrConfig.sampleRate ?? 16000
       const language = asrConfig.language ?? 'zh'
-
-      // 注册转写回调，推送到渲染进程
-      const sender = event.sender
-      asrService.onTranscript((transcript) => {
-        if (!sender.isDestroyed()) {
-          sender.send(IPC_CHANNELS.ASR_TRANSCRIPT, {
-            id: '',
-            sessionId: sessionRecorder.getSessionId() ?? '',
-            timestamp: transcript.timestamp,
-            speaker: transcript.speaker,
-            text: transcript.text,
-            isFinal: transcript.isFinal,
-          })
-        }
-
-        // 同时记录到 SessionRecorder
-        if (sessionRecorder.isRecording()) {
-          sessionRecorder.recordTranscript(
-            transcript.speaker,
-            transcript.text,
-            transcript.timestamp,
-            transcript.isFinal,
-          )
-        }
-      })
 
       await asrService.startStream(sampleRate, language)
       return { success: true }
@@ -208,8 +378,26 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
     return { isRecording: asrService.isRunning() }
   })
 
-  ipcMain.handle(IPC_CHANNELS.ASR_TEST_CONNECTION, async () => {
+  ipcMain.handle(IPC_CHANNELS.ASR_TEST_CONNECTION, async (_e, override?: {
+    providerId?: string
+    baseURL: string
+    apiKey: string
+    model: string
+  }) => {
     try {
+      if (override?.baseURL && override?.apiKey && override?.model) {
+        const probeConfig = {
+          providerId: override.providerId,
+          baseURL: override.baseURL,
+          apiKey: override.apiKey,
+          model: override.model,
+        }
+        const [system, mic] = await Promise.all([
+          new WhisperASR(probeConfig).testConnection(),
+          new WhisperASR(probeConfig).testConnection(),
+        ])
+        return { system, mic }
+      }
       return await asrService.testConnection()
     } catch (err) {
       return {
@@ -217,6 +405,18 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
         mic: { success: false, error: err instanceof Error ? err.message : String(err) },
       }
     }
+  })
+
+  ipcMain.on(IPC_CHANNELS.ASR_PUSH_MIC_AUDIO, (_e, chunk: unknown) => {
+    const buffer = toNodeBuffer(chunk)
+    if (!buffer) return
+    audioCapture.pushMicData(buffer)
+  })
+
+  ipcMain.on(IPC_CHANNELS.ASR_PUSH_SYSTEM_AUDIO, (_e, chunk: unknown) => {
+    const buffer = toNodeBuffer(chunk)
+    if (!buffer) return
+    audioCapture.pushSystemAudioData(buffer)
   })
 
   // ── Session ──
@@ -270,8 +470,9 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
       const transcripts = transcriptRepo.getBySessionId(id)
       const screenshotQAs = screenshotQARepo.getBySessionId(id)
       const review = reviewRepo.getBySessionId(id)
+      const context = sessionContextRepo.getBySessionId(id)
 
-      return { session, transcripts, screenshotQAs, review }
+      return { session, transcripts, screenshotQAs, review, context }
     } catch {
       return null
     }
@@ -296,9 +497,10 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
       const transcripts = transcriptRepo.getBySessionId(id)
       const screenshotQAs = screenshotQARepo.getBySessionId(id)
       const review = reviewRepo.getBySessionId(id)
+      const context = sessionContextRepo.getBySessionId(id)
 
       if (format === 'json') {
-        const data = JSON.stringify({ session, transcripts, screenshotQAs, review }, null, 2)
+        const data = JSON.stringify({ session, context, transcripts, screenshotQAs, review }, null, 2)
         return { success: true, data, mimeType: 'application/json' }
       }
 
@@ -308,6 +510,18 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
         lines.push(`\n**时间**: ${new Date(session.startTime).toLocaleString()}`)
         lines.push(`**时长**: ${Math.round(session.duration / 60)} 分钟`)
         lines.push(`**状态**: ${session.status}\n`)
+        if (context) {
+          if (context.round) {
+            lines.push(`**轮次**: ${context.round}`)
+          }
+          if (context.backgroundNote) {
+            lines.push(`**面试背景**: ${context.backgroundNote}`)
+          }
+          if (context.resumeFileName) {
+            lines.push(`**简历文件**: ${context.resumeFileName}`)
+          }
+          lines.push('')
+        }
 
         if (transcripts.length > 0) {
           lines.push('## 对话记录\n')
@@ -363,7 +577,7 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
   ipcMain.handle(IPC_CHANNELS.REVIEW_GENERATE, async (_e, sessionId: string) => {
     try {
       // 读取 review 角色配置，apiKey 为空时回退到 chat 配置
-      const llmConfig = configManager.get('llm') as { review: import('@shared/types/llm').LLMProvider; chat: import('@shared/types/llm').LLMProvider }
+      const llmConfig = await configManager.getResolvedLLMConfig()
       const roleConfig = llmConfig.review?.apiKey ? llmConfig.review : llmConfig.chat
       llmService.updateConfig(roleConfig)
       const session = sessionRepo.getById(sessionId)
@@ -418,8 +632,20 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
   })
 
   // ── Config (fully implemented) ──
-  ipcMain.handle(IPC_CHANNELS.CONFIG_GET, async (_e, key: string) => configManager.get(key))
+  ipcMain.handle(IPC_CHANNELS.CONFIG_GET, async (_e, key: string) => {
+    if (key === 'llm') return configManager.getResolvedLLMConfig()
+    if (key === 'asr') return configManager.getResolvedASRConfig()
+    return configManager.get(key)
+  })
   ipcMain.handle(IPC_CHANNELS.CONFIG_SET, async (_e, key: string, value: unknown) => {
+    if (key === 'llm') {
+      await configManager.setLLMConfig(value as import('@shared/types/config').AppConfig['llm'])
+      return { success: true }
+    }
+    if (key === 'asr') {
+      await configManager.setASRConfig(value as import('@shared/types/config').AppConfig['asr'])
+      return { success: true }
+    }
     configManager.set(key, value)
     return { success: true }
   })
@@ -435,9 +661,9 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
     configManager.resetToDefaults()
     return { success: true }
   })
-  ipcMain.handle(IPC_CHANNELS.CONFIG_EXPORT, async () => configManager.exportConfig())
+  ipcMain.handle(IPC_CHANNELS.CONFIG_EXPORT, async () => configManager.exportConfigResolved())
   ipcMain.handle(IPC_CHANNELS.CONFIG_IMPORT, async (_e, config: unknown) => {
-    configManager.importConfig(config as Partial<import('@shared/types/config').AppConfig>)
+    await configManager.importConfigWithSecrets(config as Partial<import('@shared/types/config').AppConfig>)
     return { success: true }
   })
 
@@ -491,4 +717,116 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
       return { success: false, error: err instanceof Error ? err.message : String(err) }
     }
   })
+}
+
+function getSystemPrompt(configManager: ConfigManager): string {
+  const raw = configManager.get('systemPrompt')
+  const basePrompt = typeof raw === 'string' ? raw.trim() : ''
+  return buildRuntimeSystemPrompt(basePrompt, getProgrammingLanguage(configManager))
+}
+
+function buildScreenshotQuestion(configManager: ConfigManager, question: string): string {
+  const language = getProgrammingLanguage(configManager)
+  if (language === 'auto') return question
+
+  const label = LANGUAGE_LABELS[language as Exclude<ProgrammingLanguagePreference, 'auto'>]
+  if (!label) return question
+
+  return `${question}\n\n补充要求（严格执行）：若需要写代码，请优先使用 ${label} 作答。即使截图里出现其他语言示例，也请转换为 ${label}。只有当我在当前这条提问里明确指定其他语言时才切换。`
+}
+
+function getProgrammingLanguage(configManager: ConfigManager): ProgrammingLanguagePreference {
+  const languageRaw = configManager.get('programmingLanguage')
+  const language = typeof languageRaw === 'string' ? languageRaw.trim().toLowerCase() : 'auto'
+  return language as ProgrammingLanguagePreference
+}
+
+function withSystemPrompt(messages: ChatMessage[], systemPrompt: string): ChatMessage[] {
+  const sanitized = (messages ?? []).filter((message) => {
+    if (!message) return false
+    if (typeof message.content === 'string') {
+      return message.content.trim().length > 0 || message.role === 'system'
+    }
+    return Array.isArray(message.content) ? message.content.length > 0 : true
+  })
+
+  if (!systemPrompt) return sanitized
+  if (sanitized.some((m) => m.role === 'system')) return sanitized
+
+  return [{ role: 'system', content: systemPrompt }, ...sanitized]
+}
+
+function withSessionContextMessage(messages: ChatMessage[], sessionContext: string): ChatMessage[] {
+  const context = sessionContext.trim()
+  if (!context) return messages
+
+  if (messages.some((message) => message.role === 'system' && message.content === context)) {
+    return messages
+  }
+
+  const firstNonSystemIdx = messages.findIndex((message) => message.role !== 'system')
+  if (firstNonSystemIdx < 0) {
+    return [...messages, { role: 'system', content: context }]
+  }
+
+  return [
+    ...messages.slice(0, firstNonSystemIdx),
+    { role: 'system', content: context },
+    ...messages.slice(firstNonSystemIdx),
+  ]
+}
+
+function extractLatestUserQuery(messages: ChatMessage[]): string {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i]
+    if (!message || message.role !== 'user') continue
+    const text = extractMessageText(message.content).trim()
+    if (!text) continue
+    if (isInternalConstraintMessage(text)) continue
+    return text
+  }
+  return ''
+}
+
+function extractMessageText(content: ChatMessage['content']): string {
+  if (typeof content === 'string') return content
+  if (!Array.isArray(content)) return ''
+  return content
+    .map((item) => {
+      if (item.type === 'text') return item.text ?? ''
+      return ''
+    })
+    .join('\n')
+}
+
+function isInternalConstraintMessage(text: string): boolean {
+  const normalized = text.trim()
+  if (!normalized) return false
+  return (
+    normalized.includes('代码语言要求（强约束）') ||
+    normalized.includes('附加策略（代码语言偏好')
+  )
+}
+
+function persistScreenshotImage(sessionId: string, imageBase64: string): string {
+  try {
+    const screenshotDir = join(app.getPath('userData'), 'data', 'screenshots', sessionId)
+    mkdirSync(screenshotDir, { recursive: true })
+    const imagePath = join(screenshotDir, `${Date.now()}-${randomUUID()}.png`)
+    writeFileSync(imagePath, Buffer.from(imageBase64, 'base64'))
+    return imagePath
+  } catch (err) {
+    log.warn('持久化截屏失败', err)
+    return ''
+  }
+}
+
+function toNodeBuffer(chunk: unknown): Buffer | null {
+  if (!chunk) return null
+  if (Buffer.isBuffer(chunk)) return chunk
+  if (chunk instanceof ArrayBuffer) return Buffer.from(chunk)
+  if (ArrayBuffer.isView(chunk)) {
+    return Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength)
+  }
+  return null
 }

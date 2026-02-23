@@ -11,6 +11,7 @@ export default function SessionDetail({ onBack }: { onBack: () => void }) {
     transcripts,
     screenshotQAs,
     review,
+    sessionContext,
     loading,
     generateReview,
   } = useHistoryStore()
@@ -35,6 +36,32 @@ export default function SessionDetail({ onBack }: { onBack: () => void }) {
 
       {/* 内容 */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6">
+        {(sessionContext?.round || sessionContext?.backgroundNote || sessionContext?.resumeFileName) && (
+          <section>
+            <h4 className="text-xs font-semibold text-text-secondary mb-3 uppercase tracking-wide">会话背景</h4>
+            <div className="space-y-2 rounded-lg border border-border-subtle bg-bg-tertiary/40 p-3">
+              {sessionContext.round && (
+                <p className="text-sm text-text-primary">
+                  <span className="text-text-muted">轮次：</span>
+                  {sessionContext.round}
+                </p>
+              )}
+              {sessionContext.backgroundNote && (
+                <p className="text-sm text-text-primary whitespace-pre-wrap leading-relaxed">
+                  <span className="text-text-muted">背景：</span>
+                  {sessionContext.backgroundNote}
+                </p>
+              )}
+              {sessionContext.resumeFileName && (
+                <p className="text-sm text-text-primary">
+                  <span className="text-text-muted">简历文件：</span>
+                  {sessionContext.resumeFileName}
+                </p>
+              )}
+            </div>
+          </section>
+        )}
+
         {/* 转写全文 */}
         <section>
           <h4 className="text-xs font-semibold text-text-secondary mb-3 uppercase tracking-wide">转写记录</h4>
@@ -64,11 +91,13 @@ export default function SessionDetail({ onBack }: { onBack: () => void }) {
             <div className="space-y-4">
               {screenshotQAs.map((qa) => (
                 <div key={qa.id} className="p-3 rounded-lg bg-bg-tertiary/50 border border-border-subtle space-y-2">
-                  <img
-                    src={`file://${qa.imagePath}`}
-                    alt="截屏"
-                    className="rounded-md border border-border-default max-h-48 object-contain"
-                  />
+                  {qa.imagePath && (
+                    <img
+                      src={`file://${qa.imagePath}`}
+                      alt="截屏"
+                      className="rounded-md border border-border-default max-h-48 object-contain"
+                    />
+                  )}
                   <p className="text-xs text-text-muted">{qa.question}</p>
                   <div className="prose prose-invert prose-sm max-w-none">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{qa.answer}</ReactMarkdown>

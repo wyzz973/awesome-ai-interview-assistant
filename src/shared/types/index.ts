@@ -1,4 +1,4 @@
-export type { Session, TranscriptEntry, ScreenshotQA, ReviewReport } from './session'
+export type { Session, TranscriptEntry, ScreenshotQA, ReviewReport, SessionContext } from './session'
 export type {
   LLMProvider,
   LLMProviderPreset,
@@ -10,6 +10,8 @@ export type {
   ASRConfig,
   ASRProviderType,
   ASRLanguage,
+  WhisperStreamingConfig,
+  ProgrammingLanguagePreference,
   AppearanceConfig,
   StorageConfig,
 } from './config'

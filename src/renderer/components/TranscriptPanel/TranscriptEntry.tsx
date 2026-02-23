@@ -11,10 +11,12 @@ export default function TranscriptEntry({ entry, selected, onToggle }: Transcrip
   const isInterviewer = entry.speaker === 'interviewer'
 
   return (
-    <div
+    <button
+      type="button"
       onClick={() => onToggle(entry.id)}
       className={`
-        flex gap-2.5 px-3 py-2 rounded-lg cursor-pointer transition-colors
+        w-full text-left flex gap-2.5 px-3 py-2 rounded-lg cursor-pointer transition-colors bg-transparent
+        focus:outline-none focus:ring-2 focus:ring-border-focus/40
         ${selected ? 'bg-accent-primary/10 border border-accent-primary/30' : 'border border-transparent hover:bg-bg-hover'}
         ${!entry.isFinal ? 'opacity-60' : ''}
       `}
@@ -49,6 +51,6 @@ export default function TranscriptEntry({ entry, selected, onToggle }: Transcrip
           {entry.text}
         </p>
       </div>
-    </div>
+    </button>
   )
 }

@@ -64,10 +64,18 @@ export default function ModelSetupStep({ onProviderChange, initialProvider }: Mo
     }
     setFetchingModels(true)
     try {
-      const result = await window.api.llmFetchModels(form.baseURL, form.apiKey)
+      const result = await window.api.llmFetchModels(form.id, form.baseURL, form.apiKey)
       if (result.models.length > 0) {
         setRemoteModels(result.models)
-        toast.success(`获取到 ${result.models.length} 个模型`)
+        const sourceLabel = result.source === 'provider'
+          ? '官方接口'
+          : result.source === 'models.dev'
+            ? 'models.dev'
+            : '本地预设'
+        toast.success(`获取到 ${result.models.length} 个模型（来源：${sourceLabel}）`)
+        if (result.warning) {
+          toast.info(result.warning)
+        }
       } else {
         toast.info(result.error ?? '未获取到模型，使用预设列表')
       }

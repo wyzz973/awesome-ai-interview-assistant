@@ -1,6 +1,10 @@
 import { create } from 'zustand'
 import { getLogger } from '../utils/logger'
 import { toast } from '../components/Common'
+import { useSettingsStore } from './settingsStore'
+import { useAppStore } from './appStore'
+import { buildScreenshotPrompt } from '../services/screenshotPrompt'
+import { buildCodeLanguageConstraint } from '../services/codeLanguagePolicy'
 
 const log = getLogger('chatStore')
 
@@ -64,6 +68,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       return
     }
     const { addUserMessage, startStream, appendStreamChunk, endStream, enableHistory } = get()
+    const appState = useAppStore.getState()
+    if (!appState.isRecording && appState.interviewDraft.resumeFileName) {
+      toast.info('当前未开始面试会话，简历上下文不会注入。请先点击“开始面试”。')
+    }
+    const language = useSettingsStore.getState().config?.programmingLanguage
+    const codeLanguageConstraint = buildCodeLanguageConstraint(language)
 
     addUserMessage(content)
     startStream()
@@ -78,6 +88,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
     } else {
       chatMessages.push({ role: 'user', content })
+    }
+    if (codeLanguageConstraint) {
+      // 不污染聊天面板，只在请求侧附加代码语言约束
+      chatMessages.push({ role: 'user', content: codeLanguageConstraint })
     }
 
     // 注册流式监听
@@ -123,10 +137,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
       return
     }
     const { addUserMessage, startStream, appendStreamChunk, endStream } = get()
+    const displayPrompt = prompt?.trim() || '请分析这张截图'
+    const language = useSettingsStore.getState().config?.programmingLanguage
+    const effectivePrompt = buildScreenshotPrompt(displayPrompt, language)
 
     // 用 data URI 作为截屏缩略图路径
     const screenshotDataURI = `data:image/png;base64,${imageBase64}`
-    addUserMessage(prompt || '请分析这张截图', screenshotDataURI)
+    addUserMessage(displayPrompt, screenshotDataURI)
     startStream()
 
     const offChunk = api.onLLMStreamChunk((chunk) => appendStreamChunk(chunk))
@@ -148,7 +165,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
 
     try {
-      const result = await api.llmAnalyzeScreenshot(imageBase64, prompt)
+      const result = await api.llmAnalyzeScreenshot(imageBase64, effectivePrompt)
       if (!result.success) {
         log.error('LLM 截屏分析失败', result.error)
         toast.error(result.error || '截屏分析失败，请检查模型配置')

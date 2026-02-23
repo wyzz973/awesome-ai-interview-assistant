@@ -1,15 +1,34 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { Button, Input } from '../Common'
 import { toast } from '../Common'
 import { LLM_PROVIDER_PRESETS } from '@shared/constants'
-import type { LLMProvider } from '@shared/types'
+import type { LLMProvider, ProgrammingLanguagePreference } from '@shared/types'
 
 const LLM_ROLES = [
   { key: 'screenshot' as const, label: '截屏分析' },
   { key: 'chat' as const, label: '对话' },
   { key: 'review' as const, label: '复盘报告' },
+]
+
+const PROGRAMMING_LANGUAGE_OPTIONS: Array<{
+  value: ProgrammingLanguagePreference
+  label: string
+}> = [
+  { value: 'auto', label: '自动（按题目判断）' },
+  { value: 'python', label: 'Python' },
+  { value: 'java', label: 'Java' },
+  { value: 'javascript', label: 'JavaScript' },
+  { value: 'typescript', label: 'TypeScript' },
+  { value: 'go', label: 'Go' },
+  { value: 'cpp', label: 'C++' },
+  { value: 'c', label: 'C' },
+  { value: 'rust', label: 'Rust' },
+  { value: 'csharp', label: 'C#' },
+  { value: 'kotlin', label: 'Kotlin' },
+  { value: 'swift', label: 'Swift' },
+  { value: 'php', label: 'PHP' },
 ]
 
 function ProviderEditor({
@@ -29,11 +48,10 @@ function ProviderEditor({
   const [remoteModels, setRemoteModels] = useState<string[]>([])
 
   // 当 provider prop 变化时（例如 loadConfig 重载），同步到表单状态
-  const prevProviderRef = useRef(provider)
-  if (JSON.stringify(provider) !== JSON.stringify(prevProviderRef.current)) {
-    prevProviderRef.current = provider
+  useEffect(() => {
     setForm(provider)
-  }
+    setRemoteModels([])
+  }, [provider])
 
   const selectedPreset = LLM_PROVIDER_PRESETS.find((p) => p.id === form.id)
 
@@ -67,10 +85,18 @@ function ProviderEditor({
     }
     setFetchingModels(true)
     try {
-      const result = await window.api.llmFetchModels(form.baseURL, form.apiKey)
+      const result = await window.api.llmFetchModels(form.id, form.baseURL, form.apiKey)
       if (result.models.length > 0) {
         setRemoteModels(result.models)
-        toast.success(`获取到 ${result.models.length} 个模型`)
+        const sourceLabel = result.source === 'provider'
+          ? '官方接口'
+          : result.source === 'models.dev'
+            ? 'models.dev'
+            : '本地预设'
+        toast.success(`获取到 ${result.models.length} 个模型（来源：${sourceLabel}）`)
+        if (result.warning) {
+          toast.info(result.warning)
+        }
       } else {
         toast.info(result.error ?? '未获取到模型，使用预设列表')
       }
@@ -188,7 +214,7 @@ function ProviderEditor({
 }
 
 export default function ModelSettings() {
-  const { config, updateLLMProvider } = useSettingsStore()
+  const { config, updateLLMProvider, updateProgrammingLanguage } = useSettingsStore()
   if (!config) return null
 
   const handleSave = async (key: 'screenshot' | 'chat' | 'review', provider: LLMProvider) => {
@@ -202,6 +228,25 @@ export default function ModelSettings() {
 
   return (
     <div className="space-y-4">
+      <div className="space-y-3 p-3 bg-bg-tertiary/50 rounded-lg border border-border-subtle">
+        <h4 className="text-xs font-medium text-text-secondary">代码语言偏好</h4>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs text-text-muted">默认输出语言（用于代码题）</label>
+          <select
+            value={config.programmingLanguage}
+            onChange={(e) => void updateProgrammingLanguage(e.target.value as ProgrammingLanguagePreference)}
+            className="h-9 px-3 text-sm rounded-lg bg-bg-tertiary text-text-primary border border-border-default focus:outline-none focus:border-border-focus"
+          >
+            {PROGRAMMING_LANGUAGE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+          <span className="text-xs text-text-muted">
+            代码题会优先按此语言输出；如需临时切换，可在当次提问里明确指定。
+          </span>
+        </div>
+      </div>
+
       {LLM_ROLES.map(({ key, label }) => (
         <ProviderEditor
           key={key}

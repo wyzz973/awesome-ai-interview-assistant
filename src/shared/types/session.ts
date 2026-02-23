@@ -44,3 +44,15 @@ export interface ReviewReport {
   suggestions: string[]
   keyTopics: string[]
 }
+
+/** 会话绑定的上下文（简历/轮次/背景） */
+export interface SessionContext {
+  sessionId: string
+  round: string
+  backgroundNote: string
+  resumeFileName: string
+  resumeFilePath: string
+  resumeText: string
+  createdAt: number
+  updatedAt: number
+}

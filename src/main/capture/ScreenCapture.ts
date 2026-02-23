@@ -1,79 +1,91 @@
 import { desktopCapturer, screen } from 'electron'
-import type { NativeImage } from 'electron'
+import type { Display, NativeImage } from 'electron'
 import type { StealthWindow } from '../window/StealthWindow'
-import type { SelectorWindow, SelectionRegion } from '../window/SelectorWindow'
 import { getLogger } from '../logger'
 
 const log = getLogger('ScreenCapture')
 
+export interface CaptureRegion {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 export interface CaptureResult {
   image: Buffer
   imageBase64: string
-  region: SelectionRegion
+  region: CaptureRegion
 }
 
 export class ScreenCapture {
   private stealthWindow: StealthWindow
-  private selectorWindow: SelectorWindow
 
-  constructor(stealthWindow: StealthWindow, selectorWindow: SelectorWindow) {
+  constructor(stealthWindow: StealthWindow) {
     this.stealthWindow = stealthWindow
-    this.selectorWindow = selectorWindow
   }
 
-  /** 完整截屏流程：隐藏窗口 → 截全屏 → 选区 → 裁剪 → 恢复窗口 */
+  /** 自动截取当前屏幕（鼠标所在显示器） */
   async captureRegion(): Promise<CaptureResult | null> {
-    log.debug('开始截屏选区')
-    // 隐藏隐身窗口避免截到自身
-    this.stealthWindow.hide()
+    log.debug('开始自动截屏')
+    const wasVisible = this.stealthWindow.getWindow()?.isVisible() ?? false
+    if (wasVisible) {
+      this.stealthWindow.hide()
+    }
 
     try {
-      // 先截取全屏图像
-      const fullImage = await this.captureFullScreen()
-      const screenshotDataURL = fullImage.toDataURL()
-
-      // 打开选区窗口，把截图当背景
-      const region = await this.selectorWindow.selectRegion(screenshotDataURL)
-      if (!region) return null
-
-      // 从已截取的全屏图像中裁剪选区
-      const scaleFactor = screen.getPrimaryDisplay().scaleFactor
-      const cropped = fullImage.crop({
-        x: Math.round(region.x * scaleFactor),
-        y: Math.round(region.y * scaleFactor),
-        width: Math.round(region.width * scaleFactor),
-        height: Math.round(region.height * scaleFactor),
-      })
-
-      const pngBuffer = cropped.toPNG()
+      const display = this.getTargetDisplay()
+      const image = await this.captureDisplay(display)
+      const pngBuffer = image.toPNG()
       const base64 = pngBuffer.toString('base64')
+      const region: CaptureRegion = {
+        x: 0,
+        y: 0,
+        width: display.size.width,
+        height: display.size.height,
+      }
 
-      log.debug('截屏完成', { width: region.width, height: region.height })
+      log.debug('自动截屏完成', { width: region.width, height: region.height, displayId: display.id })
       return { image: pngBuffer, imageBase64: base64, region }
     } finally {
-      // 恢复隐身窗口
-      this.stealthWindow.show()
+      if (wasVisible) {
+        this.stealthWindow.show()
+      }
     }
   }
 
-  /** 截取全屏 */
-  private async captureFullScreen(): Promise<NativeImage> {
-    const display = screen.getPrimaryDisplay()
-    const scaleFactor = display.scaleFactor
+  private getTargetDisplay(): Display {
+    const cursorPoint = screen.getCursorScreenPoint()
+    return screen.getDisplayNearestPoint(cursorPoint)
+  }
+
+  /** 截取指定显示器 */
+  private async captureDisplay(display: Display): Promise<NativeImage> {
+    const scaleFactor = display.scaleFactor || 1
 
     const sources = await desktopCapturer.getSources({
       types: ['screen'],
       thumbnailSize: {
-        width: display.size.width * scaleFactor,
-        height: display.size.height * scaleFactor,
+        width: Math.max(1, Math.round(display.size.width * scaleFactor)),
+        height: Math.max(1, Math.round(display.size.height * scaleFactor)),
       },
     })
 
-    const primarySource = sources[0]
-    if (!primarySource) {
+    const displayId = String(display.id)
+    const source = sources.find((item) => item.display_id === displayId) ?? sources[0]
+    if (!source) {
       throw new Error('No screen source available')
     }
+    if (source.display_id !== displayId) {
+      log.warn('未匹配到当前显示器来源，回退首个屏幕源', {
+        expectedDisplayId: displayId,
+        selectedSource: source.id,
+      })
+    }
+    if (source.thumbnail.isEmpty()) {
+      throw new Error('Captured screen source is empty')
+    }
 
-    return primarySource.thumbnail
+    return source.thumbnail
   }
 }

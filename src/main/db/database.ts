@@ -3,6 +3,7 @@ import { app } from 'electron'
 import { join } from 'path'
 import { mkdirSync } from 'fs'
 import { up as migration001 } from './migrations/001_initial'
+import { up as migration002 } from './migrations/002_interview_memory'
 
 let db: Database.Database | null = null
 
@@ -71,6 +72,7 @@ function runMigrations(database: Database.Database): void {
 
   const migrations = [
     { name: '001_initial', fn: migration001 },
+    { name: '002_interview_memory', fn: migration002 },
   ]
 
   const insertMigration = database.prepare(

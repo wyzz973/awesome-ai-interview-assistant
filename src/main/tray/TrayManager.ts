@@ -59,8 +59,8 @@ export class TrayManager {
       },
       {
         label: isRecording
-          ? `停止录音    ${formatAccelerator(hk.toggleRecording)}`
-          : `开始录音    ${formatAccelerator(hk.toggleRecording)}`,
+          ? `结束面试    ${formatAccelerator(hk.toggleRecording)}`
+          : `开始面试    ${formatAccelerator(hk.toggleRecording)}`,
         click: () => cb.onToggleRecording(),
       },
       { type: 'separator' },

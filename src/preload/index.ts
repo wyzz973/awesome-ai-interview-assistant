@@ -1,8 +1,17 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC_CHANNELS } from '@shared/types/ipc'
-import type { Session, TranscriptEntry, ScreenshotQA, ReviewReport } from '@shared/types/session'
+import type { Session, TranscriptEntry, ScreenshotQA, ReviewReport, SessionContext } from '@shared/types/session'
 import type { AppConfig } from '@shared/types/config'
 import type { HotkeyConfig } from '@shared/types/hotkey'
+
+interface InterviewStartOptions {
+  company?: string
+  position?: string
+  round?: string
+  backgroundNote?: string
+  resumeFilePath?: string
+  resumeFileName?: string
+}
 
 const api = {
   // ── Window ──
@@ -12,6 +21,7 @@ const api = {
 
   // ── Screenshot ──
   screenshotCapture: () => ipcRenderer.invoke(IPC_CHANNELS.SCREENSHOT_CAPTURE),
+  pickResumeFile: () => ipcRenderer.invoke(IPC_CHANNELS.RESUME_PICK_FILE),
 
   /** 截屏选区：确认选区 */
   selectorConfirm: (region: { x: number; y: number; width: number; height: number }) => {
@@ -38,8 +48,8 @@ const api = {
     ipcRenderer.invoke(IPC_CHANNELS.LLM_ANALYZE_SCREENSHOT, imageBase64, prompt),
   llmTestConnection: (override?: { baseURL: string; apiKey: string; model: string }) =>
     ipcRenderer.invoke(IPC_CHANNELS.LLM_TEST_CONNECTION, override),
-  llmFetchModels: (baseURL: string, apiKey: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.LLM_FETCH_MODELS, baseURL, apiKey),
+  llmFetchModels: (providerId: string, baseURL: string, apiKey: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.LLM_FETCH_MODELS, providerId, baseURL, apiKey),
 
   /** LLM 流式推送监听 */
   onLLMStreamChunk: (callback: (chunk: string) => void) => {
@@ -62,13 +72,64 @@ const api = {
   asrStart: () => ipcRenderer.invoke(IPC_CHANNELS.ASR_START),
   asrStop: () => ipcRenderer.invoke(IPC_CHANNELS.ASR_STOP),
   asrStatus: () => ipcRenderer.invoke(IPC_CHANNELS.ASR_STATUS),
-  asrTestConnection: () => ipcRenderer.invoke(IPC_CHANNELS.ASR_TEST_CONNECTION),
+  asrTestConnection: (override?: { providerId?: string; baseURL: string; apiKey: string; model: string }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.ASR_TEST_CONNECTION, override),
+  asrPushMicAudio: (audioData: Uint8Array) => ipcRenderer.send(IPC_CHANNELS.ASR_PUSH_MIC_AUDIO, audioData),
+  asrPushSystemAudio: (audioData: Uint8Array) => ipcRenderer.send(IPC_CHANNELS.ASR_PUSH_SYSTEM_AUDIO, audioData),
+
+  // ── Recording ──
+  recordingToggle: (options?: InterviewStartOptions) =>
+    ipcRenderer.invoke(IPC_CHANNELS.RECORDING_TOGGLE, options),
+  recordingStatus: () => ipcRenderer.invoke(IPC_CHANNELS.RECORDING_STATUS),
 
   /** ASR 转写结果推送监听 */
   onASRTranscript: (callback: (entry: TranscriptEntry) => void) => {
     const handler = (_e: Electron.IpcRendererEvent, entry: TranscriptEntry) => callback(entry)
     ipcRenderer.on(IPC_CHANNELS.ASR_TRANSCRIPT, handler)
     return () => ipcRenderer.removeListener(IPC_CHANNELS.ASR_TRANSCRIPT, handler)
+  },
+  onASRDebug: (
+    callback: (event: {
+      id: string
+      timestamp: number
+      speaker: 'interviewer' | 'me'
+      stage: 'state' | 'decision' | 'request' | 'response' | 'error'
+      reason?: string
+      isFinal?: boolean
+      vadSpeech?: boolean
+      chunkMs?: number
+      utteranceMs?: number
+      speechMs?: number
+      silenceMs?: number
+      latencyMs?: number
+      status?: number
+      textLength?: number
+      message?: string
+      model?: string
+      endpoint?: string
+    }) => void,
+  ) => {
+    const handler = (_e: Electron.IpcRendererEvent, event: {
+      id: string
+      timestamp: number
+      speaker: 'interviewer' | 'me'
+      stage: 'state' | 'decision' | 'request' | 'response' | 'error'
+      reason?: string
+      isFinal?: boolean
+      vadSpeech?: boolean
+      chunkMs?: number
+      utteranceMs?: number
+      speechMs?: number
+      silenceMs?: number
+      latencyMs?: number
+      status?: number
+      textLength?: number
+      message?: string
+      model?: string
+      endpoint?: string
+    }) => callback(event)
+    ipcRenderer.on(IPC_CHANNELS.ASR_DEBUG, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.ASR_DEBUG, handler)
   },
 
   // ── Session ──
@@ -121,13 +182,13 @@ const api = {
     ipcRenderer.on('recording:started', handler)
     return () => ipcRenderer.removeListener('recording:started', handler)
   },
-  onRecordingStopped: (callback: () => void) => {
-    const handler = () => callback()
+  onRecordingStopped: (callback: (data: { sessionId?: string | null }) => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, data: { sessionId?: string | null }) => callback(data ?? {})
     ipcRenderer.on('recording:stopped', handler)
     return () => ipcRenderer.removeListener('recording:stopped', handler)
   },
-  onRecordingError: (callback: (data: { message: string }) => void) => {
-    const handler = (_e: Electron.IpcRendererEvent, data: { message: string }) => callback(data)
+  onRecordingError: (callback: (data: { message: string; fatal?: boolean; code?: string }) => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, data: { message: string; fatal?: boolean; code?: string }) => callback(data)
     ipcRenderer.on('recording:error', handler)
     return () => ipcRenderer.removeListener('recording:error', handler)
   },

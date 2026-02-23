@@ -1,7 +1,8 @@
 import { useEffect, useMemo } from 'react'
 import { Clock, Building, Briefcase, Trash2, ChevronRight } from 'lucide-react'
 import { useHistoryStore, useFilteredSessions } from '../../stores/historyStore'
-import { StatusBadge, Loading, IconButton } from '../Common'
+import { useAppStore } from '../../stores/appStore'
+import { StatusBadge, Loading, IconButton, Button } from '../Common'
 import { toast } from '../Common'
 import type { Session } from '@shared/types'
 
@@ -28,11 +29,20 @@ function SessionCard({
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       onClick={() => onSelect(session.id)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onSelect(session.id)
+        }
+      }}
       className="
         flex items-center gap-3 p-3 rounded-lg border border-border-subtle
         hover:bg-bg-hover hover:border-border-default
         transition-colors cursor-pointer group
+        focus:outline-none focus:ring-2 focus:ring-border-focus/40
       "
     >
       <div className="flex-1 min-w-0 space-y-1.5">
@@ -73,6 +83,7 @@ function SessionCard({
 
 export default function HistoryList({ onSelectSession }: { onSelectSession: (id: string) => void }) {
   const { filters, setFilters, loadSessions, deleteSession, loading, sessions } = useHistoryStore()
+  const { setView } = useAppStore()
   const filtered = useFilteredSessions()
 
   useEffect(() => {
@@ -120,8 +131,14 @@ export default function HistoryList({ onSelectSession }: { onSelectSession: (id:
       {/* 列表 */}
       <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
         {filtered.length === 0 ? (
-          <div className="flex items-center justify-center h-full">
-            <p className="text-sm text-text-muted">暂无面试记录</p>
+          <div className="flex items-center justify-center h-full px-3">
+            <div className="rounded-xl border border-border-default bg-bg-tertiary/60 p-4 text-center space-y-3 max-w-sm">
+              <p className="text-sm text-text-primary font-medium">还没有可复盘的面试记录</p>
+              <p className="text-xs text-text-muted">建议先开始一次 30-45 分钟的模拟面试，再回来生成复盘报告。</p>
+              <Button size="sm" onClick={() => setView('answer')}>
+                去开始一场面试
+              </Button>
+            </div>
           </div>
         ) : (
           filtered.map((s) => (

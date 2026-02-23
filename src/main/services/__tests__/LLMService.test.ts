@@ -156,11 +156,11 @@ describe('LLMService', () => {
         {
           role: 'user',
           content: [
+            { type: 'text', text: 'What is this?' },
             {
               type: 'image_url',
               image_url: { url: 'data:image/png;base64,abc123base64' }
-            },
-            { type: 'text', text: 'What is this?' }
+            }
           ]
         }
       ])
@@ -216,6 +216,51 @@ describe('LLMService', () => {
       const userContent = callBody.messages[0].content
       expect(userContent).toHaveLength(1)
       expect(userContent[0].type).toBe('image_url')
+    })
+
+    it('should strip existing data URI prefix before constructing payload', async () => {
+      const sseData = [
+        'data: {"choices":[{"delta":{"content":"ok"}}]}\n\n',
+        'data: [DONE]\n\n'
+      ]
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: sseStream(sseData)
+      })
+
+      const service = new LLMService(makeProvider())
+      const iter = await service.analyzeScreenshot('data:image/jpeg;base64,img-data', 'describe')
+      await collect(iter)
+
+      const callBody = JSON.parse(mockFetch.mock.calls[0][1].body)
+      const imagePart = callBody.messages[0].content.find((part: { type: string }) => part.type === 'image_url')
+      expect(imagePart.image_url.url).toBe('data:image/png;base64,img-data')
+    })
+
+    it('should auto-switch glm text model to a vision fallback model', async () => {
+      const sseData = [
+        'data: {"choices":[{"delta":{"content":"ok"}}]}\n\n',
+        'data: [DONE]\n\n'
+      ]
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: sseStream(sseData)
+      })
+
+      const service = new LLMService(
+        makeProvider({
+          id: 'glm',
+          baseURL: 'https://open.bigmodel.cn/api/paas/v4',
+          model: 'glm-4.6',
+        })
+      )
+      const iter = await service.analyzeScreenshot('img', 'describe')
+      await collect(iter)
+
+      const callBody = JSON.parse(mockFetch.mock.calls[0][1].body)
+      expect(callBody.model).toBe('glm-4.6v')
+      const imagePart = callBody.messages[0].content.find((part: { type: string }) => part.type === 'image_url')
+      expect(imagePart.image_url.url).toBe('data:image/png;base64,img')
     })
   })
 
@@ -287,6 +332,94 @@ describe('LLMService', () => {
       const service = new LLMService(makeProvider())
       const result = await service.testConnection()
       expect(result).toEqual({ success: false, error: 'Network error' })
+    })
+  })
+
+  describe('fetchModels()', () => {
+    it('should fetch models from OpenAI-compatible /models endpoint', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: [{ id: 'gpt-5.2' }, { id: 'gpt-5-mini' }]
+        })
+      })
+
+      const service = new LLMService(makeProvider())
+      const result = await service.fetchModels('https://api.openai.com', 'sk-openai', 'openai')
+
+      expect(result.source).toBe('provider')
+      expect(result.models).toEqual(['gpt-5.2', 'gpt-5-mini'])
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://api.openai.com/v1/models',
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Authorization: 'Bearer sk-openai',
+          }),
+        })
+      )
+    })
+
+    it('should use Anthropic native headers for claude provider model list', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: [{ id: 'claude-sonnet-4-6' }, { id: 'claude-opus-4-6' }]
+        })
+      })
+
+      const service = new LLMService(makeProvider())
+      const result = await service.fetchModels('https://api.anthropic.com', 'sk-ant', 'claude')
+
+      expect(result.source).toBe('provider')
+      expect(result.models).toEqual(['claude-sonnet-4-6', 'claude-opus-4-6'])
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://api.anthropic.com/v1/models',
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'x-api-key': 'sk-ant',
+            'anthropic-version': '2023-06-01',
+          }),
+        })
+      )
+    })
+
+    it('should fallback to models.dev when provider endpoint fails', async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 500,
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            zhipuai: {
+              models: {
+                'glm-4.6': { release_date: '2025-06-30' },
+                'glm-5': { release_date: '2025-09-22' },
+              },
+            },
+          }),
+        })
+
+      const service = new LLMService(makeProvider())
+      const result = await service.fetchModels('https://open.bigmodel.cn/api/paas/v4', 'sk-glm', 'glm')
+
+      expect(result.source).toBe('models.dev')
+      expect(result.models).toEqual(['glm-5', 'glm-4.6'])
+      expect(result.warning).toContain('供应商接口失败')
+    })
+
+    it('should fallback to preset models when both provider and models.dev fail', async () => {
+      mockFetch
+        .mockRejectedValueOnce(new Error('provider unavailable'))
+        .mockRejectedValueOnce(new Error('models.dev unavailable'))
+
+      const service = new LLMService(makeProvider())
+      const result = await service.fetchModels('https://api.deepseek.com/v1', 'sk-deepseek', 'deepseek')
+
+      expect(result.source).toBe('preset')
+      expect(result.models).toContain('deepseek-chat')
+      expect(result.warning).toBe('已回退到本地预设模型列表')
     })
   })
 
