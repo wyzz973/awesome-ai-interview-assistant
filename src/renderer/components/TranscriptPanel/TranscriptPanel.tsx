@@ -4,8 +4,10 @@ import { useTranscriptStore } from '../../stores/transcriptStore'
 import { useChatStore } from '../../stores/chatStore'
 import { useAppStore } from '../../stores/appStore'
 import { useSettingsStore } from '../../stores/settingsStore'
-import { IconButton, Button, toast } from '../Common'
+import { IconButton, Button, toast, HealthStatusBar } from '../Common'
 import TranscriptEntry from './TranscriptEntry'
+import { runRecordingPreflight } from '../../services/recordingPreflight'
+import { shouldBlockInterviewStart } from '../../services/recordingGate'
 
 function formatDuration(ms: number): string {
   const totalSec = Math.floor(ms / 1000)
@@ -24,7 +26,7 @@ export default function TranscriptPanel() {
     getSelectedText,
     clear,
   } = useTranscriptStore()
-  const { recordingIssue, setView, interviewDraft } = useAppStore()
+  const { recordingIssue, setRecordingIssue, setView, interviewDraft, healthSnapshot } = useAppStore()
   const { config } = useSettingsStore()
 
   const { sendMessage } = useChatStore()
@@ -93,6 +95,29 @@ export default function TranscriptPanel() {
     }
     setStarting(true)
     try {
+      const gateMode = config?.recordingGateMode ?? 'strict'
+      const gateDecision = shouldBlockInterviewStart(healthSnapshot)
+      const preflight = await runRecordingPreflight()
+      const blockedByPreflight = gateMode === 'strict' && !preflight.dualChannelReady
+      const blockedByHealth = gateMode === 'strict' && gateDecision.blocked
+      if (blockedByPreflight || blockedByHealth) {
+        setRecordingIssue({
+          message: blockedByHealth ? gateDecision.reason : (preflight.blockingReason ?? '录音前自检未通过'),
+          fatal: false,
+          code: 'recording-gate-blocked',
+          timestamp: Date.now(),
+        })
+        setView('settings')
+        return
+      }
+      if (!preflight.dualChannelReady && gateMode === 'lenient') {
+        setRecordingIssue({
+          message: preflight.blockingReason ?? '双声道链路未就绪，将以降级模式继续。',
+          fatal: false,
+          code: 'recording-gate-lenient-warning',
+          timestamp: Date.now(),
+        })
+      }
       const company = interviewDraft.company.trim()
       const position = interviewDraft.position.trim()
       const round = interviewDraft.round.trim()
@@ -153,6 +178,7 @@ export default function TranscriptPanel() {
           />
         </div>
       </div>
+      <HealthStatusBar snapshot={healthSnapshot} compact />
 
       {/* 条目列表 */}
       <div className="flex-1 overflow-y-auto px-2 py-2 space-y-1">

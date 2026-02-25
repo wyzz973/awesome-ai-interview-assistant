@@ -16,6 +16,7 @@ import { LLMService } from './services/LLMService'
 import { ASRService } from './services/ASRService'
 import { ReviewService } from './services/ReviewService'
 import { InterviewMemoryService } from './services/InterviewMemoryService'
+import { HealthMonitorService } from './services/HealthMonitorService'
 import { ResumeParser } from './services/ResumeParser'
 import { WhisperASR } from './services/ASRProviders/WhisperASR'
 import { AliyunASR } from './services/ASRProviders/AliyunASR'
@@ -60,6 +61,7 @@ class App {
   private llmService!: LLMService
   private asrService!: ASRService
   private reviewService!: ReviewService
+  private healthMonitor!: HealthMonitorService
   private sessionRecorder!: SessionRecorder
   private hotkeyManager!: HotkeyManager
   private trayManager!: TrayManager
@@ -125,6 +127,16 @@ class App {
     // 7. Capture Services
     this.screenCapture = new ScreenCapture(this.stealthWindow)
     this.audioCapture = new AudioCapture()
+    this.healthMonitor = new HealthMonitorService({
+      getRecordingStatus: () => this.getRecordingStatusSnapshot(),
+      getRecordingGateMode: () => {
+        const mode = this.configManager.get('recordingGateMode')
+        return mode === 'lenient' ? 'lenient' : 'strict'
+      },
+      checkBlackHole: () => this.audioCapture.checkBlackHole(),
+      checkLLMReady: () => this.checkLLMReady(),
+      checkASRReady: () => this.checkASRReady(),
+    })
 
     // 8. SessionRecorder
     const dbPath = join(app.getPath('userData'), 'data', 'interviews.db')
@@ -137,6 +149,7 @@ class App {
 
     // 8.1 统一注册 ASR 转写回调（热键录制和 IPC 启动共用）
     this.asrService.onTranscript((transcript) => {
+      this.healthMonitor.recordHeartbeat()
       const sessionId = this.sessionRecorder.getSessionId() ?? ''
       this.sendToRenderer(IPC_CHANNELS.ASR_TRANSCRIPT, {
         id: `asr-${transcript.timestamp}-${++this.asrTranscriptSeq}`,
@@ -195,6 +208,7 @@ class App {
       reviewRepo: this.reviewRepo,
       sessionContextRepo: this.sessionContextRepo,
       interviewMemoryService: this.interviewMemoryService,
+      healthMonitor: this.healthMonitor,
     })
 
     // 11. 创建主窗口
@@ -381,6 +395,7 @@ class App {
   ): WhisperASR {
     const provider = new WhisperASR(config)
     provider.onDebug((event) => {
+      this.healthMonitor.recordASRDebug(event)
       this.sendToRenderer(IPC_CHANNELS.ASR_DEBUG, {
         id: `asr-debug-${event.timestamp}-${++this.asrDebugSeq}`,
         speaker,
@@ -424,6 +439,8 @@ class App {
         this.audioCapture.stop()
         this.stealthWindow.enableInteraction()
         this.trayManager.setStatus('ready')
+        this.healthMonitor.clearRecordingIssue()
+        this.healthMonitor.recordHeartbeat()
         this.sendToRenderer('recording:stopped', { sessionId })
         return { success: true, isRecording: false, ...(sessionId ? { sessionId } : {}) }
       } else {
@@ -456,6 +473,10 @@ class App {
                 fatal: false,
                 code: 'resume-parse-failed',
               })
+              this.healthMonitor.recordRecordingIssue({
+                message: `简历解析失败：${detail}`,
+                code: 'resume-parse-failed',
+              })
             }
           }
 
@@ -479,6 +500,10 @@ class App {
           this.sendToRenderer('recording:error', {
             message: warning,
             fatal: false,
+            code: 'asr-start-failed',
+          })
+          this.healthMonitor.recordRecordingIssue({
+            message: warning,
             code: 'asr-start-failed',
           })
         }
@@ -505,11 +530,17 @@ class App {
             fatal: true,
             code: 'audio-capture-start-failed',
           })
+          this.healthMonitor.recordRecordingIssue({
+            message: error,
+            code: 'audio-capture-start-failed',
+          })
           return { success: false, isRecording: false, error }
         }
 
         this.stealthWindow.disableInteraction()
         this.trayManager.setStatus('recording')
+        this.healthMonitor.clearRecordingIssue()
+        this.healthMonitor.recordHeartbeat()
         this.sendToRenderer('recording:started', { sessionId })
         return {
           success: true,
@@ -526,6 +557,10 @@ class App {
         fatal: true,
         code: 'recording-toggle-failed',
       })
+      this.healthMonitor.recordRecordingIssue({
+        message: error,
+        code: 'recording-toggle-failed',
+      })
       return {
         success: false,
         isRecording: this.sessionRecorder?.isRecording?.() ?? false,
@@ -540,6 +575,26 @@ class App {
       sessionId: this.sessionRecorder?.getSessionId?.() ?? null,
       asrRunning: this.asrService?.isRunning?.() ?? false,
     }
+  }
+
+  private async checkLLMReady(): Promise<boolean> {
+    const llm = await this.configManager.getResolvedLLMConfig()
+    const chat = llm.chat
+    return !!(chat.baseURL?.trim() && chat.apiKey?.trim() && chat.model?.trim())
+  }
+
+  private async checkASRReady(): Promise<boolean> {
+    const asr = await this.configManager.getResolvedASRConfig()
+    if (asr.provider === 'whisper') {
+      return !!(asr.whisper?.baseURL?.trim() && asr.whisper?.apiKey?.trim() && asr.whisper?.model?.trim())
+    }
+    if (asr.provider === 'aliyun') {
+      return !!(asr.aliyun?.appKey?.trim() && asr.aliyun?.accessKeyId?.trim() && asr.aliyun?.accessKeySecret?.trim())
+    }
+    if (asr.provider === 'tencent') {
+      return !!(asr.tencent?.appId?.trim() && asr.tencent?.secretId?.trim() && asr.tencent?.secretKey?.trim())
+    }
+    return false
   }
 
   private sendToRenderer(channel: string, ...args: unknown[]): void {

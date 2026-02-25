@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { HealthSnapshot } from '@shared/types/health'
 
 export type AppView = 'answer' | 'transcript' | 'history' | 'settings'
 
@@ -14,6 +15,8 @@ interface AppState {
   isRecording: boolean
   currentSessionId: string | null
   recordingIssue: RecordingIssue | null
+  answerLayout: 'focus' | 'split'
+  healthSnapshot: HealthSnapshot | null
   interviewDraft: {
     company: string
     position: string
@@ -28,6 +31,8 @@ interface AppState {
   setRecording: (recording: boolean) => void
   setCurrentSessionId: (id: string | null) => void
   setRecordingIssue: (issue: RecordingIssue | null) => void
+  setAnswerLayout: (layout: 'focus' | 'split') => void
+  setHealthSnapshot: (snapshot: HealthSnapshot | null) => void
   setInterviewDraft: (draft: Partial<{
     company: string
     position: string
@@ -44,6 +49,8 @@ export const useAppStore = create<AppState>((set) => ({
   isRecording: false,
   currentSessionId: null,
   recordingIssue: null,
+  answerLayout: 'focus',
+  healthSnapshot: null,
   interviewDraft: {
     company: '',
     position: '',
@@ -58,6 +65,8 @@ export const useAppStore = create<AppState>((set) => ({
   setRecording: (recording) => set({ isRecording: recording }),
   setCurrentSessionId: (id) => set({ currentSessionId: id }),
   setRecordingIssue: (issue) => set({ recordingIssue: issue }),
+  setAnswerLayout: (layout) => set({ answerLayout: layout }),
+  setHealthSnapshot: (snapshot) => set({ healthSnapshot: snapshot }),
   setInterviewDraft: (draft) => set((state) => ({
     interviewDraft: {
       company: draft.company ?? state.interviewDraft.company,

@@ -145,7 +145,7 @@ function formatDebugLine(event: ASRDebugEvent): string {
     .trim()
 }
 
-export default function ASRSettings() {
+export default function ASRSettings({ basicOnly = false }: { basicOnly?: boolean }) {
   const { config, updateASR } = useSettingsStore()
   const [fetchingModels, setFetchingModels] = useState(false)
   const [testingConnection, setTestingConnection] = useState(false)
@@ -174,11 +174,12 @@ export default function ASRSettings() {
   }, [whisper.id, whisper.baseURL])
 
   useEffect(() => {
+    if (basicOnly) return
     if (!window.api.onASRDebug) return
     return window.api.onASRDebug((event: ASRDebugEvent) => {
       setDebugEvents((prev) => [event, ...prev].slice(0, 120))
     })
-  }, [])
+  }, [basicOnly])
 
   const updateWhisper = useCallback(async (patch: Partial<NonNullable<ASRConfig['whisper']>>) => {
     const next = {
@@ -428,119 +429,123 @@ export default function ASRSettings() {
             )}
           </div>
 
-          <div className="space-y-2 p-2 rounded-md bg-bg-primary/60 border border-border-subtle">
-            <h5 className="text-xs font-medium text-text-secondary">实时转写参数（参考开源流式方案）</h5>
+          {!basicOnly && (
+            <div className="space-y-2 p-2 rounded-md bg-bg-primary/60 border border-border-subtle">
+              <h5 className="text-xs font-medium text-text-secondary">实时转写参数（参考开源流式方案）</h5>
 
-            <div className="grid grid-cols-2 gap-2">
-              <Input
-                label="chunk(ms)"
-                type="number"
-                min={800}
-                max={12000}
-                value={String(streaming.chunkLengthMs)}
-                onChange={(e) => void updateWhisper({
-                  streaming: { ...streaming, chunkLengthMs: clampInt(e.target.value, 800, 12000) },
-                })}
-              />
-              <Input
-                label="offset(ms)"
-                type="number"
-                min={0}
-                max={2000}
-                value={String(streaming.overlapMs)}
-                onChange={(e) => void updateWhisper({
-                  streaming: { ...streaming, overlapMs: clampInt(e.target.value, 0, 2000) },
-                })}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs text-text-muted">VAD 门控</label>
-                <select
-                  value={streaming.vadEnabled ? 'on' : 'off'}
+              <div className="grid grid-cols-2 gap-2">
+                <Input
+                  label="chunk(ms)"
+                  type="number"
+                  min={800}
+                  max={12000}
+                  value={String(streaming.chunkLengthMs)}
                   onChange={(e) => void updateWhisper({
-                    streaming: { ...streaming, vadEnabled: e.target.value === 'on' },
+                    streaming: { ...streaming, chunkLengthMs: clampInt(e.target.value, 800, 12000) },
                   })}
-                  className="h-9 px-3 text-sm rounded-lg bg-bg-tertiary text-text-primary border border-border-default focus:outline-none focus:border-border-focus"
-                >
-                  <option value="on">开启</option>
-                  <option value="off">关闭</option>
-                </select>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs text-text-muted">Partial 实时结果</label>
-                <select
-                  value={streaming.emitPartial ? 'on' : 'off'}
+                />
+                <Input
+                  label="offset(ms)"
+                  type="number"
+                  min={0}
+                  max={2000}
+                  value={String(streaming.overlapMs)}
                   onChange={(e) => void updateWhisper({
-                    streaming: { ...streaming, emitPartial: e.target.value === 'on' },
+                    streaming: { ...streaming, overlapMs: clampInt(e.target.value, 0, 2000) },
                   })}
-                  className="h-9 px-3 text-sm rounded-lg bg-bg-tertiary text-text-primary border border-border-default focus:outline-none focus:border-border-focus"
-                >
-                  <option value="on">开启</option>
-                  <option value="off">关闭</option>
-                </select>
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs text-text-muted">VAD 门控</label>
+                  <select
+                    value={streaming.vadEnabled ? 'on' : 'off'}
+                    onChange={(e) => void updateWhisper({
+                      streaming: { ...streaming, vadEnabled: e.target.value === 'on' },
+                    })}
+                    className="h-9 px-3 text-sm rounded-lg bg-bg-tertiary text-text-primary border border-border-default focus:outline-none focus:border-border-focus"
+                  >
+                    <option value="on">开启</option>
+                    <option value="off">关闭</option>
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs text-text-muted">Partial 实时结果</label>
+                  <select
+                    value={streaming.emitPartial ? 'on' : 'off'}
+                    onChange={(e) => void updateWhisper({
+                      streaming: { ...streaming, emitPartial: e.target.value === 'on' },
+                    })}
+                    className="h-9 px-3 text-sm rounded-lg bg-bg-tertiary text-text-primary border border-border-default focus:outline-none focus:border-border-focus"
+                  >
+                    <option value="on">开启</option>
+                    <option value="off">关闭</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <Input
+                  label="VAD 阈值"
+                  type="number"
+                  min={0.001}
+                  max={0.2}
+                  step={0.001}
+                  value={String(streaming.vadThreshold)}
+                  onChange={(e) => void updateWhisper({
+                    streaming: { ...streaming, vadThreshold: clampFloat(e.target.value, 0.001, 0.2) },
+                  })}
+                />
+                <Input
+                  label="最短语音(ms)"
+                  type="number"
+                  min={80}
+                  max={4000}
+                  value={String(streaming.minSpeechMs)}
+                  onChange={(e) => void updateWhisper({
+                    streaming: { ...streaming, minSpeechMs: clampInt(e.target.value, 80, 4000) },
+                  })}
+                />
+                <Input
+                  label="静音结束(ms)"
+                  type="number"
+                  min={120}
+                  max={5000}
+                  value={String(streaming.minSilenceMs)}
+                  onChange={(e) => void updateWhisper({
+                    streaming: { ...streaming, minSilenceMs: clampInt(e.target.value, 120, 5000) },
+                  })}
+                />
               </div>
             </div>
+          )}
 
-            <div className="grid grid-cols-3 gap-2">
-              <Input
-                label="VAD 阈值"
-                type="number"
-                min={0.001}
-                max={0.2}
-                step={0.001}
-                value={String(streaming.vadThreshold)}
-                onChange={(e) => void updateWhisper({
-                  streaming: { ...streaming, vadThreshold: clampFloat(e.target.value, 0.001, 0.2) },
-                })}
-              />
-              <Input
-                label="最短语音(ms)"
-                type="number"
-                min={80}
-                max={4000}
-                value={String(streaming.minSpeechMs)}
-                onChange={(e) => void updateWhisper({
-                  streaming: { ...streaming, minSpeechMs: clampInt(e.target.value, 80, 4000) },
-                })}
-              />
-              <Input
-                label="静音结束(ms)"
-                type="number"
-                min={120}
-                max={5000}
-                value={String(streaming.minSilenceMs)}
-                onChange={(e) => void updateWhisper({
-                  streaming: { ...streaming, minSilenceMs: clampInt(e.target.value, 120, 5000) },
-                })}
-              />
+          {!basicOnly && (
+            <div className="space-y-2 p-2 rounded-md bg-bg-primary/60 border border-border-subtle">
+              <div className="flex items-center justify-between">
+                <h5 className="text-xs font-medium text-text-secondary">ASR 调试日志（实时）</h5>
+                <button
+                  type="button"
+                  className="text-xs text-accent-primary hover:text-accent-primary/80"
+                  onClick={() => setDebugEvents([])}
+                >
+                  清空
+                </button>
+              </div>
+              <div className="max-h-40 overflow-y-auto rounded border border-border-subtle bg-bg-tertiary/70 p-2 font-mono text-[11px] leading-5 text-text-secondary">
+                {debugEvents.length === 0 ? (
+                  <div className="text-text-muted">开始录音后，这里会显示 VAD/分段/请求耗时日志。</div>
+                ) : (
+                  debugEvents.map((event) => (
+                    <div key={event.id} className="break-all">
+                      {formatDebugLine(event)}
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
-          </div>
-
-          <div className="space-y-2 p-2 rounded-md bg-bg-primary/60 border border-border-subtle">
-            <div className="flex items-center justify-between">
-              <h5 className="text-xs font-medium text-text-secondary">ASR 调试日志（实时）</h5>
-              <button
-                type="button"
-                className="text-xs text-accent-primary hover:text-accent-primary/80"
-                onClick={() => setDebugEvents([])}
-              >
-                清空
-              </button>
-            </div>
-            <div className="max-h-40 overflow-y-auto rounded border border-border-subtle bg-bg-tertiary/70 p-2 font-mono text-[11px] leading-5 text-text-secondary">
-              {debugEvents.length === 0 ? (
-                <div className="text-text-muted">开始录音后，这里会显示 VAD/分段/请求耗时日志。</div>
-              ) : (
-                debugEvents.map((event) => (
-                  <div key={event.id} className="break-all">
-                    {formatDebugLine(event)}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
+          )}
 
           <div className="flex items-center gap-2">
             <Button size="sm" variant="secondary" loading={testingConnection} onClick={() => void handleTestConnection()}>

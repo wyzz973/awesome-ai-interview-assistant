@@ -4,6 +4,7 @@ import type {
   AppearanceConfig,
   ASRConfig,
   StorageConfig,
+  RecordingGateMode,
 } from '@shared/types'
 import type { LLMProvider, ProgrammingLanguagePreference } from '@shared/types'
 import type { HotkeyConfig, HotkeyAction } from '@shared/types'
@@ -38,6 +39,7 @@ interface SettingsState {
   updateProgrammingLanguage: (language: ProgrammingLanguagePreference) => Promise<void>
   updateSystemPrompt: (prompt: string) => Promise<void>
   setEnableHistoryContext: (enabled: boolean) => Promise<void>
+  updateRecordingGateMode: (mode: RecordingGateMode) => Promise<void>
 }
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
@@ -169,6 +171,18 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ config: updated, saving: true })
     try {
       await api.configSet('enableHistoryContext', enabled)
+    } finally {
+      set({ saving: false })
+    }
+  },
+
+  updateRecordingGateMode: async (mode) => {
+    const { config } = get()
+    if (!config || !api) return
+    const updated = { ...config, recordingGateMode: mode }
+    set({ config: updated, saving: true })
+    try {
+      await api.configSet('recordingGateMode', mode)
     } finally {
       set({ saving: false })
     }

@@ -7,6 +7,9 @@ export type ASRProviderType = 'aliyun' | 'tencent' | 'whisper' | 'google'
 /** ASR 语言模式 */
 export type ASRLanguage = 'zh' | 'en' | 'zh-en'
 
+/** 录制启动门禁模式 */
+export type RecordingGateMode = 'strict' | 'lenient'
+
 /** 编程语言偏好（用于代码题默认输出语言） */
 export type ProgrammingLanguagePreference =
   | 'auto'
@@ -102,4 +105,5 @@ export interface AppConfig {
   systemPrompt: string
   enableHistoryContext: boolean
   historyContextCount: number
+  recordingGateMode: RecordingGateMode
 }

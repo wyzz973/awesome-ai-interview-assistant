@@ -4,7 +4,7 @@ import { useAppStore, type AppView } from '../../stores/appStore'
 import { useTranscriptStore } from '../../stores/transcriptStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { toast } from '../Common'
-import { runRecordingPreflight, confirmRecordingWithPreflight } from '../../services/recordingPreflight'
+import { shouldBlockInterviewStart } from '../../services/recordingGate'
 
 const TABS: { id: AppView; label: string; icon: typeof MessageSquare }[] = [
   { id: 'answer', label: '答案', icon: MessageSquare },
@@ -14,13 +14,18 @@ const TABS: { id: AppView; label: string; icon: typeof MessageSquare }[] = [
 ]
 
 export default function Toolbar() {
-  const { currentView, setView, isRecording, recordingIssue, interviewDraft } = useAppStore()
+  const { currentView, setView, isRecording, recordingIssue, interviewDraft, healthSnapshot } = useAppStore()
   const { config } = useSettingsStore()
   const transcriptRecording = useTranscriptStore((s) => s.isRecording)
   const recording = isRecording || transcriptRecording
   const [toggling, setToggling] = useState(false)
 
   const recordingHotkey = config?.hotkeys.toggleRecording ?? 'CommandOrControl+Shift+R'
+  const needsAction = !recording && (Boolean(recordingIssue) || Boolean(healthSnapshot?.gate.blocked))
+  const inInterviewFocus = recording && currentView === 'answer'
+  const visibleTabs = inInterviewFocus
+    ? TABS.filter((tab) => tab.id === 'answer')
+    : TABS
 
   const handleToggleRecording = async () => {
     if (toggling) return
@@ -31,9 +36,14 @@ export default function Toolbar() {
     setToggling(true)
     try {
       if (!recording) {
-        const report = await runRecordingPreflight()
-        const proceed = confirmRecordingWithPreflight(report)
-        if (!proceed) {
+        const gateDecision = shouldBlockInterviewStart(healthSnapshot)
+        if (gateDecision.blocked) {
+          useAppStore.getState().setRecordingIssue({
+            message: gateDecision.reason || '链路健康检查未通过',
+            fatal: false,
+            code: 'recording-gate-blocked',
+            timestamp: Date.now(),
+          })
           setView('settings')
           return
         }
@@ -55,7 +65,9 @@ export default function Toolbar() {
       }
       if (!result?.success) {
         const detail = result?.error || '面试操作失败'
-        toast.error(detail)
+        if (recording) {
+          toast.error(detail)
+        }
         useAppStore.getState().setRecordingIssue({
           message: detail,
           fatal: true,
@@ -85,7 +97,7 @@ export default function Toolbar() {
     <div className="flex items-center justify-between px-2 py-1.5 bg-bg-primary border-b border-border-default drag-region">
       {/* Tab 切换 */}
       <div className="flex items-center gap-0.5 no-drag">
-        {TABS.map((tab) => {
+        {visibleTabs.map((tab) => {
           const Icon = tab.icon
           const active = currentView === tab.id
           return (
@@ -101,9 +113,9 @@ export default function Toolbar() {
                 }
               `}
             >
-              <Icon size={14} />
-              {tab.label}
-            </button>
+                <Icon size={14} />
+                {tab.label}
+              </button>
           )
         })}
       </div>
@@ -135,13 +147,13 @@ export default function Toolbar() {
             <span className="text-[11px] text-accent-danger font-medium">面试中</span>
           </div>
         )}
-        {!recording && recordingIssue && (
-          <div className="flex items-center gap-1.5" title={recordingIssue.message}>
+        {needsAction && (
+          <div className="flex items-center gap-1.5" title={recordingIssue?.message ?? healthSnapshot?.gate.reasons[0] ?? '请先完成配置检查'}>
             <span className="w-2 h-2 rounded-full bg-accent-warning animate-pulse" />
             <span className="text-[11px] text-accent-warning font-medium">需处理</span>
           </div>
         )}
-        {!recording && !recordingIssue && (
+        {!recording && !needsAction && (
           <div className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-accent-success" />
             <span className="text-[11px] text-text-muted">就绪</span>

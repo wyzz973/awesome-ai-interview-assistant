@@ -103,6 +103,7 @@ function App(): JSX.Element {
         (api.onRecordingStarted as (cb: (data: { sessionId: string }) => void) => () => void)(
           (data) => {
             useAppStore.getState().setRecording(true)
+            useAppStore.getState().setView('answer')
             useAppStore.getState().setCurrentSessionId(data.sessionId)
             useAppStore.getState().setRecordingIssue(null)
             useAppStore.getState().setLastCompletedSessionId(null)
@@ -256,6 +257,22 @@ function App(): JSX.Element {
       )
     }
 
+    if (api.onHealthUpdate) {
+      cleanups.push(
+        (api.onHealthUpdate as (cb: (snapshot: unknown) => void) => () => void)((snapshot) => {
+          useAppStore.getState().setHealthSnapshot(snapshot as never)
+        })
+      )
+    }
+    if (api.healthSubscribe) {
+      ;(api.healthSubscribe as (intervalMs?: number) => Promise<unknown>)(2000).catch(() => {})
+    }
+    if (api.healthGetSnapshot) {
+      ;(api.healthGetSnapshot as () => Promise<unknown>)()
+        .then((snapshot) => useAppStore.getState().setHealthSnapshot(snapshot as never))
+        .catch(() => {})
+    }
+
     if (api.recordingStatus) {
       void (async () => {
         try {
@@ -292,6 +309,9 @@ function App(): JSX.Element {
 
     return () => {
       audioCaptureRef.current?.stop()
+      if (api.healthUnsubscribe) {
+        ;(api.healthUnsubscribe as () => Promise<unknown>)().catch(() => {})
+      }
       cleanups.forEach((cleanup) => cleanup())
     }
   }, [])

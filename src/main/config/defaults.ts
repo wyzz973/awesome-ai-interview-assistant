@@ -48,6 +48,7 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
   enableHistoryContext: false,
   historyContextCount: 5,
+  recordingGateMode: 'strict',
 }
 
 /** Keychain 服务名 */

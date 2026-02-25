@@ -18,10 +18,13 @@ import type { ScreenshotQARepo } from '@main/db/repositories/ScreenshotQARepo'
 import type { ReviewRepo } from '@main/db/repositories/ReviewRepo'
 import type { SessionContextRepo } from '@main/db/repositories/SessionContextRepo'
 import type { ChatMessage } from '@shared/types/llm'
+import type { SessionListItem } from '@shared/types/session'
 import { WhisperASR } from '@main/services/ASRProviders/WhisperASR'
 import type { ProgrammingLanguagePreference } from '@shared/types/config'
 import { buildRuntimeSystemPrompt } from '@main/services/PromptPolicy'
 import type { InterviewMemoryService } from '@main/services/InterviewMemoryService'
+import type { HealthMonitorService } from '@main/services/HealthMonitorService'
+import { buildSessionSummary } from '@main/services/sessionSummary'
 import { getLogger } from '../logger'
 
 const log = getLogger('IPC')
@@ -74,6 +77,7 @@ export interface IPCDependencies {
   reviewRepo: ReviewRepo
   sessionContextRepo: SessionContextRepo
   interviewMemoryService: InterviewMemoryService
+  healthMonitor: HealthMonitorService
 }
 
 export function registerIPCHandlers(deps: IPCDependencies): void {
@@ -95,7 +99,17 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
     reviewRepo,
     sessionContextRepo,
     interviewMemoryService,
+    healthMonitor,
   } = deps
+  const healthStreams = new Map<number, NodeJS.Timeout>()
+
+  const stopHealthStream = (webContentsId: number) => {
+    const timer = healthStreams.get(webContentsId)
+    if (timer) {
+      clearInterval(timer)
+      healthStreams.delete(webContentsId)
+    }
+  }
 
   // ── Window ──
   ipcMain.handle(IPC_CHANNELS.WINDOW_TOGGLE, async () => {
@@ -111,6 +125,50 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
   ipcMain.handle(IPC_CHANNELS.WINDOW_GET_OPACITY, async () => {
     const appearance = configManager.get('appearance')
     return { opacity: appearance.opacity ?? 0.85 }
+  })
+
+  // ── Health ──
+  ipcMain.handle(IPC_CHANNELS.HEALTH_GET_SNAPSHOT, async () => {
+    return await healthMonitor.getSnapshot()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.HEALTH_SUBSCRIBE, async (event, intervalMs?: number) => {
+    const sender = event.sender
+    const webContentsId = sender.id
+    const nextInterval = Number.isFinite(intervalMs)
+      ? Math.max(1000, Math.min(10000, Math.round(Number(intervalMs))))
+      : 2000
+
+    stopHealthStream(webContentsId)
+
+    const pushSnapshot = async () => {
+      if (sender.isDestroyed()) {
+        stopHealthStream(webContentsId)
+        return
+      }
+      try {
+        const snapshot = await healthMonitor.getSnapshot()
+        sender.send(IPC_CHANNELS.HEALTH_UPDATE, snapshot)
+      } catch (err) {
+        log.warn('推送健康快照失败', err)
+      }
+    }
+
+    void pushSnapshot()
+    const timer = setInterval(() => {
+      void pushSnapshot()
+    }, nextInterval)
+    healthStreams.set(webContentsId, timer)
+
+    sender.once('destroyed', () => {
+      stopHealthStream(webContentsId)
+    })
+    return { success: true, intervalMs: nextInterval }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.HEALTH_UNSUBSCRIBE, async (event) => {
+    stopHealthStream(event.sender.id)
+    return { success: true }
   })
 
   // ── Screenshot ──
@@ -166,6 +224,7 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
 
   // ── LLM ──
   ipcMain.handle(IPC_CHANNELS.LLM_CHAT, async (event, messages: ChatMessage[]) => {
+    const startedAt = Date.now()
     try {
       // 每次调用前从 configManager 读取 chat 角色的最新配置
       const llmConfig = await configManager.getResolvedLLMConfig()
@@ -210,6 +269,10 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
           if (!sender.isDestroyed()) {
             sender.send(IPC_CHANNELS.LLM_STREAM_END)
           }
+          healthMonitor.recordLLMCall({
+            ok: true,
+            latencyMs: Date.now() - startedAt,
+          })
           if (sessionId && fullAnswer.trim()) {
             interviewMemoryService.appendChatMessage({
               sessionId,
@@ -219,19 +282,32 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
             })
           }
         } catch (err) {
+          const detail = err instanceof Error ? err.message : String(err)
+          healthMonitor.recordLLMCall({
+            ok: false,
+            latencyMs: Date.now() - startedAt,
+            error: detail,
+          })
           if (!sender.isDestroyed()) {
-            sender.send(IPC_CHANNELS.LLM_STREAM_ERROR, err instanceof Error ? err.message : String(err))
+            sender.send(IPC_CHANNELS.LLM_STREAM_ERROR, detail)
           }
         }
       })()
 
       return { success: true }
     } catch (err) {
-      return { success: false, error: err instanceof Error ? err.message : String(err) }
+      const detail = err instanceof Error ? err.message : String(err)
+      healthMonitor.recordLLMCall({
+        ok: false,
+        latencyMs: Date.now() - startedAt,
+        error: detail,
+      })
+      return { success: false, error: detail }
     }
   })
 
   ipcMain.handle(IPC_CHANNELS.LLM_ANALYZE_SCREENSHOT, async (event, imageBase64: string, prompt?: string) => {
+    const startedAt = Date.now()
     try {
       // 读取 screenshot 角色配置，apiKey 为空时回退到 chat 配置
       const llmConfig = await configManager.getResolvedLLMConfig()
@@ -289,6 +365,10 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
           if (!sender.isDestroyed()) {
             sender.send(IPC_CHANNELS.LLM_STREAM_END)
           }
+          healthMonitor.recordLLMCall({
+            ok: true,
+            latencyMs: Date.now() - startedAt,
+          })
 
           if (sessionId && sessionRecorder.isRecording() && fullAnswer.trim()) {
             sessionRecorder.recordScreenshotQA({
@@ -307,15 +387,27 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
             })
           }
         } catch (err) {
+          const detail = err instanceof Error ? err.message : String(err)
+          healthMonitor.recordLLMCall({
+            ok: false,
+            latencyMs: Date.now() - startedAt,
+            error: detail,
+          })
           if (!sender.isDestroyed()) {
-            sender.send(IPC_CHANNELS.LLM_STREAM_ERROR, err instanceof Error ? err.message : String(err))
+            sender.send(IPC_CHANNELS.LLM_STREAM_ERROR, detail)
           }
         }
       })()
 
       return { success: true }
     } catch (err) {
-      return { success: false, error: err instanceof Error ? err.message : String(err) }
+      const detail = err instanceof Error ? err.message : String(err)
+      healthMonitor.recordLLMCall({
+        ok: false,
+        latencyMs: Date.now() - startedAt,
+        error: detail,
+      })
+      return { success: false, error: detail }
     }
   })
 
@@ -455,8 +547,38 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
         offset,
         limit: pageSize,
       })
+      const sessions: SessionListItem[] = result.sessions.map((session) => {
+        const context = sessionContextRepo.getBySessionId(session.id)
+        const review = reviewRepo.getBySessionId(session.id)
+        const screenshotQAs = screenshotQARepo.getBySessionId(session.id)
+        const transcripts = transcriptRepo.getBySessionId(session.id)
+        const summary = buildSessionSummary({
+          reviewSummary: review?.summary,
+          screenshotQAs: screenshotQAs.map((item) => ({
+            question: item.question,
+            answer: item.answer,
+          })),
+          transcripts: transcripts.map((entry) => ({
+            speaker: entry.speaker,
+            text: entry.text,
+            isFinal: entry.isFinal,
+          })),
+          maxLength: 120,
+        })
 
-      return { sessions: result.sessions, total: result.total }
+        return {
+          id: session.id,
+          company: session.company,
+          position: session.position,
+          round: context?.round ?? '',
+          summary,
+          startTime: session.startTime,
+          duration: session.duration,
+          status: session.status,
+        }
+      })
+
+      return { sessions, total: result.total }
     } catch (err) {
       return { sessions: [], total: 0, error: err instanceof Error ? err.message : String(err) }
     }
@@ -804,7 +926,8 @@ function isInternalConstraintMessage(text: string): boolean {
   if (!normalized) return false
   return (
     normalized.includes('代码语言要求（强约束）') ||
-    normalized.includes('附加策略（代码语言偏好')
+    normalized.includes('附加策略（代码语言偏好') ||
+    normalized.includes('[DIRECT_ANSWER_MODE]')
   )
 }
 

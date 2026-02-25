@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type {
   Session,
+  SessionListItem,
   TranscriptEntry,
   ScreenshotQA,
   ReviewReport,
@@ -9,11 +10,12 @@ import type {
 
 interface HistoryFilters {
   company?: string
+  status?: Session['status']
   sortBy: 'time-desc' | 'time-asc'
 }
 
 interface HistoryState {
-  sessions: Session[]
+  sessions: SessionListItem[]
   currentSession: Session | null
   transcripts: TranscriptEntry[]
   screenshotQAs: ScreenshotQA[]
@@ -21,6 +23,7 @@ interface HistoryState {
   sessionContext: SessionContext | null
   filters: HistoryFilters
   loading: boolean
+  summaryLoaded: boolean
 
   loadSessions: () => Promise<void>
   loadSessionDetail: (sessionId: string) => Promise<void>
@@ -49,13 +52,17 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
   sessionContext: null,
   filters: { sortBy: 'time-desc' },
   loading: false,
+  summaryLoaded: false,
 
   loadSessions: async () => {
     if (!api) return
     set({ loading: true })
     try {
-      const result = (await api.sessionList()) as { sessions: Session[]; total: number } | null
-      set({ sessions: result?.sessions ?? [] })
+      const result = (await api.sessionList()) as { sessions: SessionListItem[]; total: number } | null
+      set({
+        sessions: result?.sessions ?? [],
+        summaryLoaded: true,
+      })
     } finally {
       set({ loading: false })
     }
@@ -166,6 +173,9 @@ export function useFilteredSessions() {
 
   if (filters.company) {
     result = result.filter((s) => s.company === filters.company)
+  }
+  if (filters.status) {
+    result = result.filter((s) => s.status === filters.status)
   }
 
   result.sort((a, b) =>

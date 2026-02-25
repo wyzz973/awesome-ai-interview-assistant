@@ -64,6 +64,12 @@ export const IPC_CHANNELS = {
   AUDIO_LIST_DEVICES: 'audio:listDevices',
   AUDIO_CHECK_BLACKHOLE: 'audio:checkBlackhole',
   AUDIO_INSTALL_BLACKHOLE: 'audio:installBlackhole',
+
+  // 健康监测
+  HEALTH_GET_SNAPSHOT: 'health:getSnapshot',
+  HEALTH_SUBSCRIBE: 'health:subscribe',
+  HEALTH_UNSUBSCRIBE: 'health:unsubscribe',
+  HEALTH_UPDATE: 'health:update',
 } as const
 
 /** IPC 通道名称类型 */

@@ -1,10 +1,10 @@
 import { useEffect, useMemo } from 'react'
-import { Clock, Building, Briefcase, Trash2, ChevronRight } from 'lucide-react'
+import { Clock, Building, Briefcase, Trash2, ChevronRight, Layers } from 'lucide-react'
 import { useHistoryStore, useFilteredSessions } from '../../stores/historyStore'
 import { useAppStore } from '../../stores/appStore'
 import { StatusBadge, Loading, IconButton, Button } from '../Common'
 import { toast } from '../Common'
-import type { Session } from '@shared/types'
+import type { SessionListItem } from '@shared/types'
 
 function formatDuration(ms: number): string {
   const min = Math.floor(ms / 60000)
@@ -16,7 +16,7 @@ function SessionCard({
   onSelect,
   onDelete,
 }: {
-  session: Session
+  session: SessionListItem
   onSelect: (id: string) => void
   onDelete: (id: string) => void
 }) {
@@ -56,12 +56,21 @@ function SessionCard({
             <Briefcase size={12} />
             {session.position}
           </span>
+          {session.round && (
+            <span className="flex items-center gap-1">
+              <Layers size={12} />
+              {session.round}
+            </span>
+          )}
           <span className="flex items-center gap-1">
             <Clock size={12} />
             {formatDuration(session.duration)}
           </span>
           <span>{new Date(session.startTime).toLocaleDateString('zh-CN')}</span>
         </div>
+        <p className="text-xs text-text-secondary leading-5 max-h-10 overflow-hidden">
+          {session.summary || '暂无摘要'}
+        </p>
       </div>
 
       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -116,6 +125,17 @@ export default function HistoryList({ onSelectSession }: { onSelectSession: (id:
           {companies.map((c) => (
             <option key={c} value={c}>{c}</option>
           ))}
+        </select>
+
+        <select
+          value={filters.status ?? ''}
+          onChange={(e) => setFilters({ status: (e.target.value || undefined) as SessionListItem['status'] | undefined })}
+          className="h-7 px-2 text-xs rounded-md bg-bg-tertiary text-text-secondary border border-border-default focus:outline-none focus:border-border-focus"
+        >
+          <option value="">全部状态</option>
+          <option value="recording">录制中</option>
+          <option value="completed">已完成</option>
+          <option value="reviewed">已复盘</option>
         </select>
 
         <select

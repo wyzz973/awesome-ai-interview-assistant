@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
@@ -10,6 +11,21 @@ interface MessageBubbleProps {
 
 export default function MessageBubble({ message }: MessageBubbleProps) {
   const isUser = message.role === 'user'
+  const [expanded, setExpanded] = useState(false)
+  const assistantParts = useMemo(() => {
+    if (isUser) return { lead: '', detail: '' }
+    const blocks = message.content
+      .split(/\\n\\s*\\n/g)
+      .map((part) => part.trim())
+      .filter(Boolean)
+    if (blocks.length <= 1) {
+      return { lead: message.content.trim(), detail: '' }
+    }
+    return {
+      lead: blocks[0],
+      detail: blocks.slice(1).join('\\n\\n'),
+    }
+  }, [isUser, message.content])
 
   return (
     <div className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
@@ -24,7 +40,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
       </div>
 
       {/* 消息内容 */}
-      <div className={`flex flex-col gap-1.5 max-w-[85%] ${isUser ? 'items-end' : 'items-start'}`}>
+      <div className={`flex flex-col gap-1.5 ${isUser ? 'max-w-[90%] items-end' : 'max-w-[96%] items-start'}`}>
         {/* 截屏缩略图 */}
         {message.screenshotPath && (
           <div className="rounded-lg overflow-hidden border border-border-default max-w-[240px]">
@@ -42,18 +58,40 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
             rounded-lg px-3 py-2 text-sm
             ${isUser
               ? 'bg-accent-primary text-white'
-              : 'bg-bg-tertiary text-text-primary'
+              : 'bg-bg-tertiary text-text-primary space-y-2'
             }
           `}
         >
           {isUser ? (
             <p className="whitespace-pre-wrap break-words">{message.content}</p>
           ) : (
-            <div className="prose prose-invert prose-sm max-w-none">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-                {message.content}
-              </ReactMarkdown>
-            </div>
+            <>
+              <div className="rounded-md border border-accent-success/20 bg-accent-success/5 px-2.5 py-2">
+                <div className="prose prose-invert prose-sm max-w-none">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+                    {assistantParts.lead || message.content}
+                  </ReactMarkdown>
+                </div>
+              </div>
+              {assistantParts.detail && (
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => setExpanded((v) => !v)}
+                    className="text-[11px] text-accent-primary hover:text-accent-primary-hover bg-transparent border-none p-0 cursor-pointer"
+                  >
+                    {expanded ? '收起细节' : '展开细节'}
+                  </button>
+                  {expanded && (
+                    <div className="prose prose-invert prose-sm max-w-none">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+                        {assistantParts.detail}
+                      </ReactMarkdown>
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </div>
 

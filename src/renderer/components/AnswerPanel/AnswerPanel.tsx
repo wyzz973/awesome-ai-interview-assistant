@@ -1,12 +1,27 @@
 import { useRef, useEffect, useState, useMemo, useCallback, type KeyboardEvent } from 'react'
-import { Send, Trash2, History, Mic, Square, Wrench, FileText, Camera, Sparkles, CheckCircle2, CircleAlert, ClipboardList } from 'lucide-react'
+import {
+  Send,
+  Trash2,
+  History,
+  Mic,
+  Square,
+  Wrench,
+  FileText,
+  Camera,
+  Sparkles,
+  ClipboardList,
+  Columns2,
+  MessageSquareText,
+} from 'lucide-react'
 import { useChatStore } from '../../stores/chatStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useAppStore } from '../../stores/appStore'
-import { IconButton, Button, toast } from '../Common'
+import { useTranscriptStore } from '../../stores/transcriptStore'
+import { IconButton, Button, toast, HealthStatusBar } from '../Common'
 import MessageBubble from './MessageBubble'
 import StreamingText from './StreamingText'
-import { runRecordingPreflight, confirmRecordingWithPreflight } from '../../services/recordingPreflight'
+import { runRecordingPreflight } from '../../services/recordingPreflight'
+import { shouldBlockInterviewStart } from '../../services/recordingGate'
 
 function isLLMReady(config: ReturnType<typeof useSettingsStore.getState>['config']): boolean {
   if (!config) return false
@@ -29,6 +44,10 @@ function isASRReady(config: ReturnType<typeof useSettingsStore.getState>['config
   return false
 }
 
+function formatSpeakerLabel(speaker: 'interviewer' | 'me'): string {
+  return speaker === 'interviewer' ? '面试官' : '我'
+}
+
 export default function AnswerPanel() {
   const {
     messages,
@@ -48,7 +67,12 @@ export default function AnswerPanel() {
     interviewDraft,
     setInterviewDraft,
     lastCompletedSessionId,
+    answerLayout,
+    setAnswerLayout,
+    healthSnapshot,
+    setRecordingIssue,
   } = useAppStore()
+  const transcriptEntries = useTranscriptStore((s) => s.entries)
 
   const [inputText, setInputText] = useState('')
   const [togglingRecording, setTogglingRecording] = useState(false)
@@ -58,17 +82,30 @@ export default function AnswerPanel() {
   const recordingHotkey = config?.hotkeys.toggleRecording ?? 'CommandOrControl+Shift+R'
   const llmReady = isLLMReady(config)
   const asrReady = isASRReady(config)
-  const workflowReady = llmReady && asrReady
-  const stageLabel = isRecording ? '面试进行中' : lastCompletedSessionId ? '面试已结束，建议复盘' : '赛前准备'
+  const gateMode = config?.recordingGateMode ?? 'strict'
+  const gateDecision = shouldBlockInterviewStart(healthSnapshot)
+  const hasHealthAlert = Boolean(
+    healthSnapshot && (
+      healthSnapshot.gate.blocked ||
+      healthSnapshot.checks.audio.state !== 'ok' ||
+      healthSnapshot.checks.asr.state !== 'ok' ||
+      healthSnapshot.checks.llm.state !== 'ok'
+    )
+  )
 
   const quickPromptTemplates = useMemo(
     () => [
-      '算法题：先给最优时间/空间复杂度思路，再给可运行代码（含边界条件和测试样例）。',
-      '系统设计：先给组件图和数据流，再做容量估算、瓶颈分析与降级方案。',
-      '排障题：先列 3 个最可能根因，再给最短验证路径和命令。',
-      '行为题：按 STAR 结构给我 90 秒可口述版本。',
+      '给我 90 秒可直接口述的答案版本。',
+      '先讲结论，再给关键步骤和风险点。',
+      '如果是代码题，先复杂度，再最短可运行实现。',
+      '如果是系统设计，先架构骨架再给容量估算。',
     ],
     [],
+  )
+
+  const liveTranscriptEntries = useMemo(
+    () => [...transcriptEntries].filter((entry) => entry.text.trim()).slice(-12),
+    [transcriptEntries],
   )
 
   useEffect(() => {
@@ -113,6 +150,25 @@ export default function AnswerPanel() {
     }
   }, [interviewDraft])
 
+  useEffect(() => {
+    try {
+      localStorage.setItem('answer-layout-v2', answerLayout)
+    } catch {
+      // ignore storage failure
+    }
+  }, [answerLayout])
+
+  useEffect(() => {
+    try {
+      const cached = localStorage.getItem('answer-layout-v2')
+      if (cached === 'focus' || cached === 'split') {
+        setAnswerLayout(cached)
+      }
+    } catch {
+      // ignore storage failure
+    }
+  }, [setAnswerLayout])
+
   // 自动滚动到底部
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -123,7 +179,6 @@ export default function AnswerPanel() {
     if (!text || isStreaming) return
     sendMessage(text)
     setInputText('')
-    // 重置 textarea 高度
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
     }
@@ -142,7 +197,6 @@ export default function AnswerPanel() {
     }
   }
 
-  // textarea 自适应高度
   const handleInput = (value: string) => {
     setInputText(value)
     if (textareaRef.current) {
@@ -183,7 +237,12 @@ export default function AnswerPanel() {
       return
     }
     if (result.warning) {
-      toast.info(result.warning)
+      setRecordingIssue({
+        message: result.warning,
+        fatal: false,
+        code: 'recording-warning',
+        timestamp: Date.now(),
+      })
     }
   }
 
@@ -192,11 +251,32 @@ export default function AnswerPanel() {
     setTogglingRecording(true)
     try {
       const report = await runRecordingPreflight()
-      const proceed = confirmRecordingWithPreflight(report)
-      if (!proceed) {
+      const blockedByPreflight = gateMode === 'strict' && !report.dualChannelReady
+      const blockedByHealth = gateMode === 'strict' && gateDecision.blocked
+
+      if (blockedByPreflight || blockedByHealth) {
+        const reason = blockedByHealth
+          ? gateDecision.reason
+          : (report.blockingReason ?? '录音前自检未通过')
+        setRecordingIssue({
+          message: reason,
+          fatal: false,
+          code: 'recording-gate-blocked',
+          timestamp: Date.now(),
+        })
         setView('settings')
         return
       }
+
+      if (!report.dualChannelReady && gateMode === 'lenient') {
+        setRecordingIssue({
+          message: report.blockingReason ?? '双声道链路未就绪，将以降级模式继续。',
+          fatal: false,
+          code: 'recording-gate-lenient-warning',
+          timestamp: Date.now(),
+        })
+      }
+
       await invokeInterviewToggle('start')
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err)
@@ -287,106 +367,88 @@ export default function AnswerPanel() {
         resumeFilePath: filePath,
         resumeFileName: fileName,
       })
-      toast.success(`已选择简历：${fileName}`)
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err)
       toast.error(`选择简历失败: ${detail}`)
     }
   }
 
+  const renderMessageList = () => (
+    <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4">
+      {messages.length === 0 && !isStreaming && (
+        <div className="flex flex-col items-center justify-center h-full gap-3">
+          <p className="text-sm text-text-muted">输入问题即可获得可直接口述答案</p>
+          <div className="flex flex-wrap gap-2 justify-center max-w-[95%]">
+            {quickPromptTemplates.map((template) => (
+              <button
+                key={template}
+                type="button"
+                onClick={() => insertQuickPrompt(template)}
+                className="px-2.5 py-1.5 rounded-md text-xs border border-border-default text-text-secondary bg-bg-tertiary/50 hover:bg-bg-hover hover:text-text-primary transition-colors cursor-pointer"
+              >
+                {template}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {messages.map((msg) => (
+        <MessageBubble key={msg.id} message={msg} />
+      ))}
+
+      {isStreaming && currentStreamText && (
+        <div className="flex gap-3">
+          <div className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center bg-accent-success/20 text-accent-success">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
+          </div>
+          <div className="bg-bg-tertiary rounded-lg px-3 py-2 max-w-[96%]">
+            <StreamingText text={currentStreamText} />
+          </div>
+        </div>
+      )}
+
+      <div ref={messagesEndRef} />
+    </div>
+  )
+
   return (
     <div className="flex flex-col h-full bg-bg-secondary">
-      {/* 顶部工具栏 */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-border-default">
-        <span className="text-xs font-medium text-text-secondary">AI 助手</span>
-        <div className="flex items-center gap-1">
-          {/* 上下文开关 */}
-          <button
-            onClick={handleToggleHistory}
-            className={`
-              flex items-center gap-1 px-2 py-1 rounded-md text-xs
-              transition-colors cursor-pointer border-none
-              ${enableHistory
-                ? 'bg-accent-primary/15 text-accent-primary'
-                : 'bg-transparent text-text-muted hover:text-text-secondary'
-              }
-            `}
-            title={enableHistory ? '关闭上下文' : '开启上下文'}
-          >
-            <History size={14} />
-            <span>上下文</span>
-          </button>
-
-          {/* 清空 */}
-          <IconButton
-            icon={<Trash2 size={14} />}
-            size="sm"
-            label="清空对话"
-            onClick={clearMessages}
-            disabled={messages.length === 0 && !isStreaming}
-          />
-        </div>
-      </div>
-
-      {/* 工作流卡片 */}
-      <div className="px-3 pt-3 border-b border-border-default/70 bg-bg-secondary">
-        <div className="rounded-xl border border-border-default bg-bg-tertiary/60 p-3 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Sparkles size={14} className="text-accent-primary" />
-              <span className="text-sm font-medium text-text-primary">程序员面试工作流</span>
-            </div>
-            <span className="text-[11px] text-text-muted">{stageLabel}</span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <input
-              value={interviewDraft.company}
-              onChange={(e) => setInterviewDraft({ company: e.target.value })}
-              placeholder="目标公司（例：Google / 字节）"
-              className="h-8 px-2.5 text-xs rounded-md bg-bg-primary border border-border-default text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-focus"
-            />
-            <input
-              value={interviewDraft.position}
-              onChange={(e) => setInterviewDraft({ position: e.target.value })}
-              placeholder="岗位（例：Backend Engineer）"
-              className="h-8 px-2.5 text-xs rounded-md bg-bg-primary border border-border-default text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-focus"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <input
-              value={interviewDraft.round}
-              onChange={(e) => setInterviewDraft({ round: e.target.value })}
-              placeholder="轮次（例：一面 / 二面 / 终面）"
-              className="h-8 px-2.5 text-xs rounded-md bg-bg-primary border border-border-default text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-focus"
-            />
+      {!isRecording && (
+        <div className="flex items-center justify-between px-3 py-2 border-b border-border-default">
+          <span className="text-xs font-medium text-text-secondary">AI 助手</span>
+          <div className="flex items-center gap-1">
             <button
-              type="button"
-              onClick={handleSelectResumeClick}
-              className="h-8 px-2.5 text-xs rounded-md bg-bg-primary border border-border-default text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-colors cursor-pointer text-left"
-              title={interviewDraft.resumeFileName || '选择简历文件（PDF / DOCX / TXT）'}
+              onClick={handleToggleHistory}
+              className={`
+                flex items-center gap-1 px-2 py-1 rounded-md text-xs
+                transition-colors cursor-pointer border-none
+                ${enableHistory
+                  ? 'bg-accent-primary/15 text-accent-primary'
+                  : 'bg-transparent text-text-muted hover:text-text-secondary'
+                }
+              `}
+              title={enableHistory ? '关闭上下文' : '开启上下文'}
             >
-              {interviewDraft.resumeFileName
-                ? `简历：${interviewDraft.resumeFileName}`
-                : '选择简历（PDF / DOCX / TXT）'}
+              <History size={14} />
+              <span>上下文</span>
             </button>
+            <IconButton
+              icon={<Trash2 size={14} />}
+              size="sm"
+              label="清空对话"
+              onClick={clearMessages}
+              disabled={messages.length === 0 && !isStreaming}
+            />
           </div>
+        </div>
+      )}
 
-          {interviewDraft.resumeFileName && !isRecording && (
-            <p className="text-[11px] text-text-muted">
-              已选择简历，点击“开始面试”后会自动解析并注入本次会话。
-            </p>
-          )}
+      {!isRecording && <HealthStatusBar snapshot={healthSnapshot} />}
+      {isRecording && hasHealthAlert && <HealthStatusBar snapshot={healthSnapshot} compact />}
 
-          <textarea
-            value={interviewDraft.backgroundNote}
-            onChange={(e) => setInterviewDraft({ backgroundNote: e.target.value })}
-            rows={2}
-            placeholder="本次面试背景（例：二面，重点考察系统设计与高并发）"
-            className="w-full px-2.5 py-2 text-xs rounded-md bg-bg-primary border border-border-default text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-focus resize-none"
-          />
-
+      {!isRecording ? (
+        <div className="px-3 py-2 border-b border-border-default bg-bg-secondary">
           <div className="flex flex-wrap items-center gap-2">
             <Button
               size="sm"
@@ -410,7 +472,7 @@ export default function AnswerPanel() {
             </Button>
             <Button size="sm" variant="secondary" onClick={() => setView('transcript')}>
               <FileText size={12} />
-              看实时转写
+              实时转写
             </Button>
             <Button size="sm" variant="secondary" onClick={() => void handleCaptureQuestion()} loading={capturing}>
               <Camera size={12} />
@@ -420,77 +482,152 @@ export default function AnswerPanel() {
               <Wrench size={12} />
               配置检查
             </Button>
-            {lastCompletedSessionId && !isRecording && (
+            {lastCompletedSessionId && (
               <Button size="sm" variant="ghost" onClick={() => setView('history')}>
                 <ClipboardList size={12} />
-                生成复盘
+                面试归档
               </Button>
             )}
           </div>
-
-          <div className="flex flex-wrap items-center gap-2 text-[11px]">
-            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border ${llmReady ? 'text-accent-success border-accent-success/25 bg-accent-success/10' : 'text-accent-warning border-accent-warning/25 bg-accent-warning/10'}`}>
-              {llmReady ? <CheckCircle2 size={12} /> : <CircleAlert size={12} />}
-              AI 模型 {llmReady ? '已配置' : '待配置'}
-            </span>
-            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border ${asrReady ? 'text-accent-success border-accent-success/25 bg-accent-success/10' : 'text-accent-warning border-accent-warning/25 bg-accent-warning/10'}`}>
-              {asrReady ? <CheckCircle2 size={12} /> : <CircleAlert size={12} />}
-              ASR {asrReady ? '已配置' : '待配置'}
-            </span>
-            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border ${workflowReady ? 'text-accent-success border-accent-success/25 bg-accent-success/10' : 'text-text-muted border-border-default bg-bg-primary/60'}`}>
-              {workflowReady ? <CheckCircle2 size={12} /> : <CircleAlert size={12} />}
-              快捷键 {recordingHotkey}
-            </span>
+          <div className="flex items-center gap-3 text-[11px] text-text-muted mt-2">
+            <span>模式: 赛前准备</span>
+            <span>门禁: {gateMode === 'strict' ? 'Strict' : 'Lenient'}</span>
+            <span>快捷键: {recordingHotkey}</span>
+            <span>LLM: {llmReady ? '已配置' : '待配置'}</span>
+            <span>ASR: {asrReady ? '已配置' : '待配置'}</span>
           </div>
-
-          {recordingIssue && (
-            <div className="rounded-lg border border-accent-warning/25 bg-accent-warning/10 px-2.5 py-2 text-xs text-text-secondary">
-              {recordingIssue.message}
-            </div>
-          )}
         </div>
-      </div>
+      ) : (
+        <div className="px-3 py-2 border-b border-border-default bg-bg-secondary/90">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              onClick={() => void handleEndInterview()}
+              loading={togglingRecording}
+              disabled={!isRecording}
+              variant="danger"
+            >
+              <Square size={12} />
+              结束面试
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => void handleCaptureQuestion()} loading={capturing}>
+              <Camera size={12} />
+              当前页提问
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setView('transcript')}>
+              <FileText size={12} />
+              转写
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setAnswerLayout(answerLayout === 'focus' ? 'split' : 'focus')}
+            >
+              <Columns2 size={12} />
+              {answerLayout === 'focus' ? '双栏' : '单栏'}
+            </Button>
+          </div>
+        </div>
+      )}
 
-      {/* 消息列表 */}
-      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4">
-        {messages.length === 0 && !isStreaming && (
-          <div className="flex flex-col items-center justify-center h-full gap-3">
-            <p className="text-sm text-text-muted">从上方工作流开始，或直接输入问题</p>
-            <div className="flex flex-wrap gap-2 justify-center max-w-[95%]">
-              {quickPromptTemplates.map((template) => (
-                <button
-                  key={template}
-                  type="button"
-                  onClick={() => insertQuickPrompt(template)}
-                  className="px-2.5 py-1.5 rounded-md text-xs border border-border-default text-text-secondary bg-bg-tertiary/50 hover:bg-bg-hover hover:text-text-primary transition-colors cursor-pointer"
-                >
-                  {template}
-                </button>
+      {!isRecording && (
+        <div className="px-3 pt-3 border-b border-border-default/70 bg-bg-secondary">
+          <div className="rounded-xl border border-border-default bg-bg-tertiary/60 p-3 space-y-3">
+            <div className="flex items-center gap-2">
+              <Sparkles size={14} className="text-accent-primary" />
+              <span className="text-sm font-medium text-text-primary">面试准备（必要信息优先）</span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                value={interviewDraft.company}
+                onChange={(e) => setInterviewDraft({ company: e.target.value })}
+                placeholder="目标公司"
+                className="h-8 px-2.5 text-xs rounded-md bg-bg-primary border border-border-default text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-focus"
+              />
+              <input
+                value={interviewDraft.position}
+                onChange={(e) => setInterviewDraft({ position: e.target.value })}
+                placeholder="岗位"
+                className="h-8 px-2.5 text-xs rounded-md bg-bg-primary border border-border-default text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-focus"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                value={interviewDraft.round}
+                onChange={(e) => setInterviewDraft({ round: e.target.value })}
+                placeholder="几面（例：一面）"
+                className="h-8 px-2.5 text-xs rounded-md bg-bg-primary border border-border-default text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-focus"
+              />
+              <button
+                type="button"
+                onClick={handleSelectResumeClick}
+                className="h-8 px-2.5 text-xs rounded-md bg-bg-primary border border-border-default text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-colors cursor-pointer text-left"
+                title={interviewDraft.resumeFileName || '选择简历文件（PDF / DOCX / TXT）'}
+              >
+                {interviewDraft.resumeFileName
+                  ? `简历：${interviewDraft.resumeFileName}`
+                  : '选择简历（PDF / DOCX / TXT）'}
+              </button>
+            </div>
+
+            <textarea
+              value={interviewDraft.backgroundNote}
+              onChange={(e) => setInterviewDraft({ backgroundNote: e.target.value })}
+              rows={2}
+              placeholder="补充背景（可选）"
+              className="w-full px-2.5 py-2 text-xs rounded-md bg-bg-primary border border-border-default text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-focus resize-none"
+            />
+
+            {(gateDecision.blocked || recordingIssue) && (
+              <div className="rounded-lg border border-accent-warning/25 bg-accent-warning/10 px-2.5 py-2 text-xs text-text-secondary">
+                {gateDecision.blocked ? gateDecision.reason : recordingIssue?.message}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div
+        className={`
+          flex-1 min-h-0
+          ${isRecording && answerLayout === 'split'
+            ? 'grid grid-cols-[minmax(0,2fr)_minmax(260px,1fr)] gap-0'
+            : 'flex flex-col'
+          }
+        `}
+      >
+        {renderMessageList()}
+
+        {isRecording && answerLayout === 'split' && (
+          <div className="min-h-0 border-l border-border-default bg-bg-secondary/70 flex flex-col">
+            <div className="px-3 py-2 border-b border-border-default flex items-center gap-1.5 text-xs text-text-secondary">
+              <MessageSquareText size={13} />
+              实时转写速览
+            </div>
+            <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
+              {liveTranscriptEntries.length === 0 && (
+                <p className="text-xs text-text-muted">等待语音输入...</p>
+              )}
+              {liveTranscriptEntries.map((entry) => (
+                <div key={entry.id} className="rounded-md border border-border-default/70 bg-bg-tertiary/40 p-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className={`text-[11px] ${entry.speaker === 'interviewer' ? 'text-accent-warning' : 'text-accent-primary'}`}>
+                      {formatSpeakerLabel(entry.speaker)}
+                    </span>
+                    <span className="text-[10px] text-text-muted">
+                      {new Date(entry.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    </span>
+                  </div>
+                  <p className="text-xs text-text-secondary leading-5 whitespace-pre-wrap">{entry.text}</p>
+                </div>
               ))}
             </div>
           </div>
         )}
-
-        {messages.map((msg) => (
-          <MessageBubble key={msg.id} message={msg} />
-        ))}
-
-        {/* 流式输出中 */}
-        {isStreaming && currentStreamText && (
-          <div className="flex gap-3">
-            <div className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center bg-accent-success/20 text-accent-success">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
-            </div>
-            <div className="bg-bg-tertiary rounded-lg px-3 py-2 max-w-[85%]">
-              <StreamingText text={currentStreamText} />
-            </div>
-          </div>
-        )}
-
-        <div ref={messagesEndRef} />
       </div>
 
-      {/* 底部输入区 */}
       <div className="px-3 py-2 border-t border-border-default">
         <div className="flex items-end gap-2">
           <textarea

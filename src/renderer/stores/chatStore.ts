@@ -5,6 +5,7 @@ import { useSettingsStore } from './settingsStore'
 import { useAppStore } from './appStore'
 import { buildScreenshotPrompt } from '../services/screenshotPrompt'
 import { buildCodeLanguageConstraint } from '../services/codeLanguagePolicy'
+import { buildDirectAnswerConstraint } from '../services/directAnswerPolicy'
 
 const log = getLogger('chatStore')
 
@@ -74,6 +75,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
     const language = useSettingsStore.getState().config?.programmingLanguage
     const codeLanguageConstraint = buildCodeLanguageConstraint(language)
+    const directAnswerConstraint = buildDirectAnswerConstraint(content)
 
     addUserMessage(content)
     startStream()
@@ -93,6 +95,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       // 不污染聊天面板，只在请求侧附加代码语言约束
       chatMessages.push({ role: 'user', content: codeLanguageConstraint })
     }
+    chatMessages.push({ role: 'user', content: directAnswerConstraint })
 
     // 注册流式监听
     const offChunk = api.onLLMStreamChunk((chunk) => appendStreamChunk(chunk))

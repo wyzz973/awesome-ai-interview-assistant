@@ -3,6 +3,7 @@ import { IPC_CHANNELS } from '@shared/types/ipc'
 import type { Session, TranscriptEntry, ScreenshotQA, ReviewReport, SessionContext } from '@shared/types/session'
 import type { AppConfig } from '@shared/types/config'
 import type { HotkeyConfig } from '@shared/types/hotkey'
+import type { HealthSnapshot } from '@shared/types/health'
 
 interface InterviewStartOptions {
   company?: string
@@ -170,6 +171,16 @@ const api = {
   audioListDevices: () => ipcRenderer.invoke(IPC_CHANNELS.AUDIO_LIST_DEVICES),
   audioCheckBlackhole: () => ipcRenderer.invoke(IPC_CHANNELS.AUDIO_CHECK_BLACKHOLE),
   audioInstallBlackhole: () => ipcRenderer.invoke(IPC_CHANNELS.AUDIO_INSTALL_BLACKHOLE),
+
+  // ── Health ──
+  healthGetSnapshot: () => ipcRenderer.invoke(IPC_CHANNELS.HEALTH_GET_SNAPSHOT),
+  healthSubscribe: (intervalMs?: number) => ipcRenderer.invoke(IPC_CHANNELS.HEALTH_SUBSCRIBE, intervalMs),
+  healthUnsubscribe: () => ipcRenderer.invoke(IPC_CHANNELS.HEALTH_UNSUBSCRIBE),
+  onHealthUpdate: (callback: (snapshot: HealthSnapshot) => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, snapshot: HealthSnapshot) => callback(snapshot)
+    ipcRenderer.on(IPC_CHANNELS.HEALTH_UPDATE, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.HEALTH_UPDATE, handler)
+  },
 
   // ── 主进程 → 渲染器 事件监听 ──
   onScreenshotCaptured: (callback: (data: { imageBase64: string; region?: unknown }) => void) => {

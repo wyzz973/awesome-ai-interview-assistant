@@ -43,6 +43,7 @@ const PROGRAMMING_LANGUAGES = new Set([
   'swift',
   'php',
 ])
+const RECORDING_GATE_MODES = new Set(['strict', 'lenient'])
 
 type ChangeCallback = (newValue: unknown, oldValue: unknown) => void
 
@@ -57,6 +58,7 @@ export class ConfigManager {
     })
     this.listeners = new Map()
     this.migrateProgrammingLanguageDefault()
+    this.migrateRecordingGateModeDefault()
     this.migrateSystemPromptToLatestDefault()
   }
 
@@ -399,6 +401,14 @@ export class ConfigManager {
     const normalized = typeof current === 'string' ? current.trim().toLowerCase() : ''
     if (!normalized || !PROGRAMMING_LANGUAGES.has(normalized)) {
       this.store.set('programmingLanguage', 'auto' as never)
+    }
+  }
+
+  private migrateRecordingGateModeDefault(): void {
+    const current = this.store.get('recordingGateMode') as unknown
+    const normalized = typeof current === 'string' ? current.trim().toLowerCase() : ''
+    if (!normalized || !RECORDING_GATE_MODES.has(normalized)) {
+      this.store.set('recordingGateMode', 'strict' as never)
     }
   }
 }

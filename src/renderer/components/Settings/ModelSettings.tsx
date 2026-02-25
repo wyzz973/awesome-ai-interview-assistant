@@ -213,9 +213,12 @@ function ProviderEditor({
   )
 }
 
-export default function ModelSettings() {
+export default function ModelSettings({ basicOnly = false }: { basicOnly?: boolean }) {
   const { config, updateLLMProvider, updateProgrammingLanguage } = useSettingsStore()
   if (!config) return null
+  const roles = basicOnly
+    ? [{ key: 'chat' as const, label: '对话' }]
+    : LLM_ROLES
 
   const handleSave = async (key: 'screenshot' | 'chat' | 'review', provider: LLMProvider) => {
     try {
@@ -247,7 +250,7 @@ export default function ModelSettings() {
         </div>
       </div>
 
-      {LLM_ROLES.map(({ key, label }) => (
+      {roles.map(({ key, label }) => (
         <ProviderEditor
           key={key}
           roleKey={key}

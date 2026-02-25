@@ -9,6 +9,18 @@ export interface Session {
   status: 'recording' | 'completed' | 'reviewed'
 }
 
+/** 历史列表项（用于归档检索） */
+export interface SessionListItem {
+  id: string
+  company: string
+  position: string
+  round: string
+  summary: string
+  startTime: number
+  duration: number
+  status: 'recording' | 'completed' | 'reviewed'
+}
+
 /** 转写记录条目 */
 export interface TranscriptEntry {
   id: string
