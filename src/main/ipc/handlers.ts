@@ -184,7 +184,7 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
         region: result.region,
       }
     } catch (err) {
-      return { success: false, error: err instanceof Error ? err.message : String(err) }
+      return { success: false, error: sanitizeError(err) }
     }
   })
 
@@ -217,7 +217,7 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
       return {
         success: false,
         canceled: false,
-        error: err instanceof Error ? err.message : String(err),
+        error: sanitizeError(err),
       }
     }
   })
@@ -282,7 +282,7 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
             })
           }
         } catch (err) {
-          const detail = err instanceof Error ? err.message : String(err)
+          const detail = sanitizeError(err)
           healthMonitor.recordLLMCall({
             ok: false,
             latencyMs: Date.now() - startedAt,
@@ -296,7 +296,7 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
 
       return { success: true }
     } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err)
+      const detail = sanitizeError(err)
       healthMonitor.recordLLMCall({
         ok: false,
         latencyMs: Date.now() - startedAt,
@@ -390,7 +390,7 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
             })
           }
         } catch (err) {
-          const detail = err instanceof Error ? err.message : String(err)
+          const detail = sanitizeError(err)
           healthMonitor.recordLLMCall({
             ok: false,
             latencyMs: Date.now() - startedAt,
@@ -404,7 +404,7 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
 
       return { success: true }
     } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err)
+      const detail = sanitizeError(err)
       healthMonitor.recordLLMCall({
         ok: false,
         latencyMs: Date.now() - startedAt,
@@ -437,7 +437,7 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
       return {
         success: false,
         isRecording: getRecordingStatus().isRecording,
-        error: err instanceof Error ? err.message : String(err),
+        error: sanitizeError(err),
       }
     }
   })
@@ -456,7 +456,7 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
       await asrService.startStream(sampleRate, language)
       return { success: true }
     } catch (err) {
-      return { success: false, error: err instanceof Error ? err.message : String(err) }
+      return { success: false, error: sanitizeError(err) }
     }
   })
 
@@ -465,7 +465,7 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
       await asrService.stopStream()
       return { success: true }
     } catch (err) {
-      return { success: false, error: err instanceof Error ? err.message : String(err) }
+      return { success: false, error: sanitizeError(err) }
     }
   })
 
@@ -496,8 +496,8 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
       return await asrService.testConnection()
     } catch (err) {
       return {
-        system: { success: false, error: err instanceof Error ? err.message : String(err) },
-        mic: { success: false, error: err instanceof Error ? err.message : String(err) },
+        system: { success: false, error: sanitizeError(err) },
+        mic: { success: false, error: sanitizeError(err) },
       }
     }
   })
@@ -520,7 +520,7 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
       const sessionId = await sessionRecorder.startSession(company, position)
       return { success: true, sessionId }
     } catch (err) {
-      return { success: false, error: err instanceof Error ? err.message : String(err) }
+      return { success: false, error: sanitizeError(err) }
     }
   })
 
@@ -535,7 +535,7 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
 
       return { success: true, sessionId }
     } catch (err) {
-      return { success: false, error: err instanceof Error ? err.message : String(err) }
+      return { success: false, error: sanitizeError(err) }
     }
   })
 
@@ -583,7 +583,7 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
 
       return { sessions, total: result.total }
     } catch (err) {
-      return { sessions: [], total: 0, error: err instanceof Error ? err.message : String(err) }
+      return { sessions: [], total: 0, error: sanitizeError(err) }
     }
   })
 
@@ -608,7 +608,7 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
       const deleted = sessionRepo.delete(id)
       return { success: deleted }
     } catch (err) {
-      return { success: false, error: err instanceof Error ? err.message : String(err) }
+      return { success: false, error: sanitizeError(err) }
     }
   })
 
@@ -694,7 +694,7 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
 
       return { success: false, error: `Unsupported format: ${format}` }
     } catch (err) {
-      return { success: false, error: err instanceof Error ? err.message : String(err) }
+      return { success: false, error: sanitizeError(err) }
     }
   })
 
@@ -744,7 +744,7 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
 
       return { success: true, report: saved }
     } catch (err) {
-      return { success: false, error: err instanceof Error ? err.message : String(err) }
+      return { success: false, error: sanitizeError(err) }
     }
   })
 
@@ -839,7 +839,7 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
     try {
       return await audioCapture.installBlackHole()
     } catch (err) {
-      return { success: false, error: err instanceof Error ? err.message : String(err) }
+      return { success: false, error: sanitizeError(err) }
     }
   })
 }

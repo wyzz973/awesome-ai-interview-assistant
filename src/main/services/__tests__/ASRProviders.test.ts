@@ -37,7 +37,7 @@ class MockWebSocket {
     for (const listener of this.closeListeners) {
       listener()
     }
-    if (this.onclose) this.onclose(new CloseEvent('close'))
+    if (this.onclose) this.onclose({ type: 'close', code: 1000, reason: '', wasClean: true } as CloseEvent)
   }
 
   addEventListener(type: string, listener: () => void, _options?: { once: boolean }): void {

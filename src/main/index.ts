@@ -103,9 +103,13 @@ class App {
     // 监听 LLM 配置变更，自动更新
     this.configManager.onChanged('llm', () => {
       void (async () => {
-        const cfg = await this.configManager.getResolvedLLMConfig()
-        this.llmService.updateConfig(cfg.chat)
-        await this.setupASRProviders()
+        try {
+          const cfg = await this.configManager.getResolvedLLMConfig()
+          this.llmService.updateConfig(cfg.chat)
+          await this.setupASRProviders()
+        } catch (err) {
+          this.log.error('LLM 配置变更回调失败', err)
+        }
       })()
     })
 
@@ -115,7 +119,9 @@ class App {
 
     // 监听 ASR 配置变更
     this.configManager.onChanged('asr', () => {
-      void this.setupASRProviders()
+      void this.setupASRProviders().catch((err) => {
+        this.log.error('ASR 配置变更回调失败', err)
+      })
     })
 
     // 5. Review Service

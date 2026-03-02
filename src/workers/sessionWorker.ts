@@ -157,6 +157,12 @@ export class SessionWorkerHandler {
 
       const sessionId = this.sessionId
       this.sessionId = null
+      // WAL checkpoint 确保所有数据已持久化到主数据库文件
+      try {
+        this.db.pragma('wal_checkpoint(TRUNCATE)')
+      } catch {
+        // checkpoint 失败不阻塞关闭
+      }
       this.db.close()
       this.db = null
 

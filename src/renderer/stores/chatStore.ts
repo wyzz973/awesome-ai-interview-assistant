@@ -43,7 +43,12 @@ interface ChatState {
   clearMessages: () => void
 }
 
-let msgId = 0
+function nextMsgId(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return `msg-${crypto.randomUUID()}`
+  }
+  return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+}
 
 export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
@@ -53,7 +58,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   addUserMessage: (content, screenshotPath) => {
     const message: ChatMessage = {
-      id: `msg-${++msgId}`,
+      id: nextMsgId(),
       role: 'user',
       content,
       timestamp: Date.now(),
@@ -195,7 +200,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const { currentStreamText } = get()
     if (currentStreamText) {
       const message: ChatMessage = {
-        id: `msg-${++msgId}`,
+        id: nextMsgId(),
         role: 'assistant',
         content: currentStreamText,
         timestamp: Date.now(),
