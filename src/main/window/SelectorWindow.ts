@@ -34,6 +34,8 @@ export class SelectorWindow {
         backgroundColor: '#000000',
         webPreferences: {
           preload: join(__dirname, '../preload/index.js'),
+          contextIsolation: true,
+          nodeIntegration: false,
           sandbox: false,
         },
       })

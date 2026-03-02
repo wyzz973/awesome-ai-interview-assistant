@@ -309,6 +309,9 @@ export function registerIPCHandlers(deps: IPCDependencies): void {
   ipcMain.handle(IPC_CHANNELS.LLM_ANALYZE_SCREENSHOT, async (event, imageBase64: string, prompt?: string) => {
     const startedAt = Date.now()
     try {
+      if (!validateBase64Image(imageBase64)) {
+        return { success: false, error: '图片数据无效或超过大小限制（20MB）' }
+      }
       // 读取 screenshot 角色配置，apiKey 为空时回退到 chat 配置
       const llmConfig = await configManager.getResolvedLLMConfig()
       const roleConfig = llmConfig.screenshot?.apiKey ? llmConfig.screenshot : llmConfig.chat
@@ -929,6 +932,25 @@ function isInternalConstraintMessage(text: string): boolean {
     normalized.includes('附加策略（代码语言偏好') ||
     normalized.includes('[DIRECT_ANSWER_MODE]')
   )
+}
+
+/** 校验 Base64 图片数据：非空、合理大小（默认 ≤ 20 MB 原始字节） */
+function validateBase64Image(base64: string, maxBytes = 20 * 1024 * 1024): boolean {
+  if (!base64 || typeof base64 !== 'string') return false
+  // Base64 编码后长度约为原始字节的 4/3
+  const estimatedBytes = Math.ceil(base64.length * 3 / 4)
+  if (estimatedBytes > maxBytes) return false
+  return true
+}
+
+/** 清理错误信息，防止 API Key 等敏感信息泄露到渲染进程或日志 */
+function sanitizeError(err: unknown): string {
+  let message = err instanceof Error ? err.message : String(err)
+  // 移除常见 API Key 格式
+  message = message.replace(/sk-[A-Za-z0-9\-_]{16,}/g, '[API_KEY]')
+  message = message.replace(/key-[A-Za-z0-9\-_]{16,}/g, '[API_KEY]')
+  message = message.replace(/Bearer\s+[A-Za-z0-9\-_.]{16,}/g, 'Bearer [TOKEN]')
+  return message
 }
 
 function persistScreenshotImage(sessionId: string, imageBase64: string): string {
