@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import * as Tabs from '@radix-ui/react-tabs'
+import { AlertTriangle } from 'lucide-react'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { Loading } from '../Common'
 import ModelSettings from './ModelSettings'
@@ -83,6 +84,19 @@ export default function Settings() {
           </div>
           <ModelSettings basicOnly />
           <ASRSettings basicOnly />
+
+          {/* 合规使用须知 */}
+          <div className="p-3 bg-status-warning/10 rounded-lg border border-status-warning/25 space-y-1.5">
+            <div className="flex items-center gap-1.5">
+              <AlertTriangle size={14} className="text-status-warning shrink-0" />
+              <h4 className="text-xs font-medium text-text-secondary">使用须知</h4>
+            </div>
+            <p className="text-[11px] text-text-muted leading-relaxed">
+              本工具仅供个人学习、模拟面试练习和技术能力提升使用。请遵守面试公司的规则与当地法律法规。
+              录音功能可能受当地录音同意法约束，请确保在使用前获得必要的知情同意。
+              AI 生成的内容仅供参考，不保证准确性。使用本工具所产生的一切后果由用户自行承担。
+            </p>
+          </div>
         </div>
       ) : (
         <Tabs.Root defaultValue="model" className="flex flex-col flex-1 overflow-hidden">

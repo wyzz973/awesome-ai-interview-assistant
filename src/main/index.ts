@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, shell, session } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { IPC_CHANNELS } from '@shared/types/ipc'
@@ -103,9 +103,13 @@ class App {
     // 监听 LLM 配置变更，自动更新
     this.configManager.onChanged('llm', () => {
       void (async () => {
-        const cfg = await this.configManager.getResolvedLLMConfig()
-        this.llmService.updateConfig(cfg.chat)
-        await this.setupASRProviders()
+        try {
+          const cfg = await this.configManager.getResolvedLLMConfig()
+          this.llmService.updateConfig(cfg.chat)
+          await this.setupASRProviders()
+        } catch (err) {
+          this.log.error('LLM 配置变更回调失败', err)
+        }
       })()
     })
 
@@ -115,7 +119,9 @@ class App {
 
     // 监听 ASR 配置变更
     this.configManager.onChanged('asr', () => {
-      void this.setupASRProviders()
+      void this.setupASRProviders().catch((err) => {
+        this.log.error('ASR 配置变更回调失败', err)
+      })
     })
 
     // 5. Review Service
@@ -211,6 +217,9 @@ class App {
       healthMonitor: this.healthMonitor,
     })
 
+    // 10.5 CSP 安全策略 — 限制 renderer 能加载的资源来源
+    this.setupCSP()
+
     // 11. 创建主窗口
     this.createWindow()
 
@@ -243,6 +252,37 @@ class App {
     })
   }
 
+  private setupCSP(): void {
+    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+      const csp = [
+        "default-src 'self'",
+        // 开发模式需要 unsafe-eval（Vite HMR），生产模式禁止
+        is.dev
+          ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+          : "script-src 'self'",
+        // Tailwind / Radix 动态样式需要 unsafe-inline
+        "style-src 'self' 'unsafe-inline'",
+        // 截图 base64 + 本地文件
+        "img-src 'self' data: file:",
+        // LLM / ASR 外部 API（HTTPS only）
+        "connect-src 'self' https: wss:",
+        "font-src 'self' data:",
+        "object-src 'none'",
+        "base-uri 'self'",
+        "form-action 'none'",
+        "frame-ancestors 'none'",
+      ].join('; ')
+
+      callback({
+        responseHeaders: {
+          ...details.responseHeaders,
+          'Content-Security-Policy': [csp],
+        },
+      })
+    })
+    this.log.info('CSP 安全策略已注入')
+  }
+
   private createWindow(): void {
     this.log.info('创建主窗口')
     const appearance = this.configManager.get('appearance') as import('@shared/types/config').AppearanceConfig
@@ -255,6 +295,17 @@ class App {
     mainWindow.webContents.setWindowOpenHandler((details) => {
       shell.openExternal(details.url)
       return { action: 'deny' }
+    })
+
+    // 导航守卫：阻止 renderer 被劫持到外部 URL
+    mainWindow.webContents.on('will-navigate', (event, url) => {
+      const allowed = is.dev
+        ? url.startsWith(process.env['ELECTRON_RENDERER_URL'] ?? 'http://localhost')
+        : url.startsWith('file://')
+      if (!allowed) {
+        this.log.warn('阻止非法导航', { url })
+        event.preventDefault()
+      }
     })
 
     if (is.dev && process.env['ELECTRON_RENDERER_URL']) {

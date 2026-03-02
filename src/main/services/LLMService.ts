@@ -486,7 +486,8 @@ export class LLMService {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${this.config.apiKey}`
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(120_000),
     })
 
     if (!response.ok) {
@@ -502,6 +503,7 @@ export class LLMService {
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
+    const MAX_BUFFER_SIZE = 4 * 1024 * 1024 // 4 MB SSE 行缓冲上限
 
     try {
       while (true) {
@@ -509,6 +511,10 @@ export class LLMService {
         if (done) break
 
         buffer += decoder.decode(value, { stream: true })
+        if (buffer.length > MAX_BUFFER_SIZE) {
+          log.warn('SSE 行缓冲超过 4MB，截断以防 OOM')
+          buffer = buffer.slice(-MAX_BUFFER_SIZE)
+        }
         const lines = buffer.split('\n')
         // Keep the last incomplete line in the buffer
         buffer = lines.pop() ?? ''

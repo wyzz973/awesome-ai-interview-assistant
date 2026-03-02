@@ -495,6 +495,7 @@ export class WhisperASR implements ASRProvider {
         Authorization: `Bearer ${this.config.apiKey}`,
       },
       body: formData,
+      signal: AbortSignal.timeout(30_000),
     })
   }
 
@@ -547,6 +548,7 @@ export class WhisperASR implements ASRProvider {
         Authorization: `Bearer ${this.config.apiKey}`,
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(30_000),
     })
   }
 
